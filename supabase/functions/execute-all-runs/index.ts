@@ -1020,6 +1020,8 @@ async function triggerContinuation(executionId: string, reason: string, nextDept
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${serviceKey}`,
         'apikey': serviceKey,
+        // Provider panels (Cloudflare) block the default ap-south-1 egress IPs.
+        'x-region': 'us-east-1',
       },
       body: JSON.stringify({ continued_from: executionId, reason, chain_depth: nextDepth }),
     })
