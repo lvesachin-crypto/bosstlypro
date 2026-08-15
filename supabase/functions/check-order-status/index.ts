@@ -1299,6 +1299,7 @@ Deno.serve(async (req) => {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            'x-region': 'us-east-1',
           },
           body: JSON.stringify({ chained: true }),
         }).catch(() => {})
