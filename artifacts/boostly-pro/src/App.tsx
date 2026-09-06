@@ -2,6 +2,7 @@ import { useEffect, lazy, Suspense, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AdminGuard } from "@/components/admin/AdminGuard";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
@@ -106,13 +107,36 @@ import Index from "./pages/Index";
 const SmmPanelUsa = lazy(() => import("./pages/SmmPanelUsa"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Auth = lazy(() => import("./pages/Auth"));
-const Dashboard = lazy(() => import("./pages/CoreDashboard"));
-const Orders = lazy(() => import("./pages/CoreOrders"));
-const Wallet = lazy(() => import("./pages/CoreWallet"));
-const Settings = lazy(() => import("./pages/CoreSettings"));
-const Support = lazy(() => import("./pages/CoreSupport"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Orders = lazy(() => import("./pages/Orders"));
+const Wallet = lazy(() => import("./pages/Wallet"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Support = lazy(() => import("./pages/Support"));
 const Maintenance = lazy(() => import("./pages/Maintenance"));
 const EngagementOrder = lazy(() => import("./pages/EngagementOrder"));
+const EngagementOrders = lazy(() => import("./pages/EngagementOrders"));
+const EngagementOrderDetail = lazy(() => import("./pages/EngagementOrderDetail"));
+const ApiAccess = lazy(() => import("./pages/ApiAccess"));
+const MyProviders = lazy(() => import("./pages/MyProviders"));
+const MyServices = lazy(() => import("./pages/MyServices"));
+const MyBundles = lazy(() => import("./pages/MyBundles"));
+const MassOrder = lazy(() => import("./pages/MassOrder"));
+const AIIntelligence = lazy(() => import("./pages/AIIntelligence"));
+const Subscription = lazy(() => import("./pages/Subscription"));
+const Admin = lazy(() => import("./pages/admin/Admin"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminBundles = lazy(() => import("./pages/admin/AdminBundles"));
+const AdminCronMonitor = lazy(() => import("./pages/admin/AdminCronMonitor"));
+const AdminDeposits = lazy(() => import("./pages/admin/AdminDeposits"));
+const AdminProviderAccounts = lazy(() => import("./pages/admin/AdminProviderAccounts"));
+const AdminServiceProviderMapping = lazy(() => import("./pages/admin/AdminServiceProviderMapping"));
+const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
+const AdminOxaPayEvents = lazy(() => import("./pages/admin/AdminOxaPayEvents"));
+const AdminPopupAd = lazy(() => import("./pages/admin/AdminPopupAd"));
+const AdminTopupPlan = lazy(() => import("./pages/admin/AdminTopupPlan"));
+const AdminSubscriptions = lazy(() => import("./pages/admin/AdminSubscriptions"));
+const AdminServices = lazy(() => import("./pages/admin/AdminServices"));
+const AdminChat = lazy(() => import("./pages/admin/AdminChat"));
 
 // 🔧 Maintenance mode toggle — set to false to bring the site back online
 const MAINTENANCE_MODE = false;
@@ -183,6 +207,29 @@ const AppRoutes = () => {
       <Route path="/wallet" element={<Wallet />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/support" element={<Support />} />
+      <Route path="/api-access" element={<ApiAccess />} />
+      <Route path="/my-providers" element={<MyProviders />} />
+      <Route path="/my-services" element={<MyServices />} />
+      <Route path="/my-bundles" element={<MyBundles />} />
+      <Route path="/mass-order" element={<MassOrder />} />
+      <Route path="/ai-intelligence" element={<AIIntelligence />} />
+      <Route path="/subscription" element={<Subscription />} />
+      <Route path="/engagement-orders" element={<EngagementOrders />} />
+      <Route path="/engagement-orders/:orderNumber" element={<EngagementOrderDetail />} />
+      <Route path="/admin" element={<AdminGuard><Admin /></AdminGuard>} />
+      <Route path="/admin/services" element={<AdminGuard><AdminServices /></AdminGuard>} />
+      <Route path="/admin/users" element={<AdminGuard><AdminUsers /></AdminGuard>} />
+      <Route path="/admin/bundles" element={<AdminGuard><AdminBundles /></AdminGuard>} />
+      <Route path="/admin/cron-monitor" element={<AdminGuard><AdminCronMonitor /></AdminGuard>} />
+      <Route path="/admin/chat" element={<AdminGuard><AdminChat /></AdminGuard>} />
+      <Route path="/admin/deposits" element={<AdminGuard><AdminDeposits /></AdminGuard>} />
+      <Route path="/admin/provider-accounts" element={<AdminGuard><AdminProviderAccounts /></AdminGuard>} />
+      <Route path="/admin/service-provider-mapping" element={<AdminGuard><AdminServiceProviderMapping /></AdminGuard>} />
+      <Route path="/admin/audit-log" element={<AdminGuard><AdminAuditLog /></AdminGuard>} />
+      <Route path="/admin/oxapay-events" element={<AdminGuard><AdminOxaPayEvents /></AdminGuard>} />
+      <Route path="/admin/popup-ad" element={<AdminGuard><AdminPopupAd /></AdminGuard>} />
+      <Route path="/admin/topup-plan" element={<AdminGuard><AdminTopupPlan /></AdminGuard>} />
+      <Route path="/admin/subscriptions" element={<AdminGuard><AdminSubscriptions /></AdminGuard>} />
 
       {/* Legal */}
       <Route path="/terms" element={<TermsOfService />} />

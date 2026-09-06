@@ -81,7 +81,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
                   COALESCE(json_agg(json_build_object('engagement_type', i.engagement_type, 'quantity', i.quantity, 'status', i.status))
                     FILTER (WHERE i.id IS NOT NULL), '[]') AS items
              FROM lovable_legacy.engagement_orders o
-             LEFT JOIN lovable_legacy.engagement_order_items i ON i.order_id = o.id
+             LEFT JOIN lovable_legacy.engagement_order_items i ON i.engagement_order_id = o.id
             WHERE o.user_id = $1::uuid
             GROUP BY o.id
             ORDER BY o.created_at DESC

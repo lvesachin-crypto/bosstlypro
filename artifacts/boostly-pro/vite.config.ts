@@ -37,6 +37,18 @@ export default defineConfig({
         '..',
         'attached_assets',
       ),
+      // Restored source files are intentionally retained under .migration-backup;
+      // resolve their bare dependencies from this artifact's installed package set.
+      'react': path.resolve(import.meta.dirname, 'node_modules/react'),
+      'react-dom': path.resolve(import.meta.dirname, 'node_modules/react-dom'),
+      'react-router-dom': path.resolve(import.meta.dirname, 'node_modules/react-router-dom'),
+      '@tanstack/react-query': path.resolve(import.meta.dirname, 'node_modules/@tanstack/react-query'),
+      'lucide-react': path.resolve(import.meta.dirname, 'node_modules/lucide-react'),
+      'date-fns': path.resolve(import.meta.dirname, 'node_modules/date-fns'),
+      'sonner': path.resolve(import.meta.dirname, 'node_modules/sonner'),
+      'react-markdown': path.resolve(import.meta.dirname, 'node_modules/react-markdown'),
+      'recharts': path.resolve(import.meta.dirname, 'node_modules/recharts'),
+      'framer-motion': path.resolve(import.meta.dirname, 'node_modules/framer-motion'),
     },
     dedupe: ['react', 'react-dom'],
   },
