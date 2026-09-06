@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { CurrencyProvider } from "@/hooks/useCurrency";
 import { ScrollToTop } from "@/components/ScrollToTop";
@@ -158,7 +158,7 @@ const AppRoutes = () => {
   if (MAINTENANCE_MODE && !allowThroughMaintenance) {
     return (
       <Routes>
-        <Route path="/auth" element={<Auth />} />
+        <Route path="/auth" element={<Navigate to="/sign-in" replace />} />
         <Route path="/sign-in/*" element={<Auth />} />
         <Route path="/sign-up/*" element={<Auth />} />
         <Route path="*" element={<Maintenance />} />
@@ -171,8 +171,7 @@ const AppRoutes = () => {
       <Route path="/sign-in/*" element={<Auth />} />
       <Route path="/sign-up/*" element={<Auth />} />
       
-      {/* Keep the old /auth route as an alias to sign-in or let the Auth component redirect? The auth component probably can redirect if we want. But the instructions say "preserve all existing routes" so we'll leave it in. */}
-      <Route path="/auth" element={<Auth />} />
+      <Route path="/auth" element={<Navigate to="/sign-in" replace />} />
 
       {/* User pages */}
       <Route path="/" element={<Index />} />
