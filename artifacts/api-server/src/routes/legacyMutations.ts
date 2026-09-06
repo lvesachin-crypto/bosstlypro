@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router(); router.use(requireAuth);
-const schema = z.object({ table: z.enum(["user_provider_accounts", "user_services", "user_bundles", "user_bundle_items", "user_bundle_item_providers"]), action: z.enum(["insert", "update", "delete", "upsert"]), values: z.any().optional(), filters: z.array(z.object({ column: z.string(), value: z.any() })).default([]) });
+const schema = z.object({ table: z.enum(["user_provider_accounts", "user_services", "user_bundles", "user_bundle_items", "user_bundle_item_providers", "subscriptions", "subscription_requests"]), action: z.enum(["insert", "update", "delete", "upsert"]), values: z.any().optional(), filters: z.array(z.object({ column: z.string(), value: z.any() })).default([]) });
 const columns: Record<string, string[]> = {
   user_provider_accounts: [], user_services: ["name", "category", "type", "rate", "min_quantity", "max_quantity", "refill", "cancel_allowed", "is_active"],
   user_bundles: ["name", "description", "platform"], user_bundle_items: ["engagement_type", "quantity"],
@@ -15,7 +15,151 @@ async function user(req: AuthenticatedRequest): Promise<string> {
   const id = (await clerkClient.users.getUser(req.userId)).externalId;
   if (!id) throw new Error("Your account is not linked to legacy data."); return id;
 }
+async function identity(req: AuthenticatedRequest): Promise<{ legacyId: string; isAdmin: boolean }> {
+  const legacyId = await user(req);
+  const role = await pool.query<{ role: string }>(
+    "SELECT role::text AS role FROM lovable_legacy.user_roles WHERE user_id=$1::uuid LIMIT 1",
+    [legacyId],
+  );
+  return { legacyId, isAdmin: role.rows[0]?.role === "admin" };
+}
 function uuidFilter(filters: { column: string; value?: unknown }[]): string | undefined { const id = filters.find((f) => f.column === "id")?.value; return typeof id === "string" ? id : undefined; }
+const uuid = z.string().uuid();
+const subscriptionPlan = z.enum(["none", "monthly", "yearly", "lifetime"]);
+const subscriptionStatus = z.enum(["inactive", "active", "expired", "cancelled"]);
+const requestPlan = z.enum(["monthly", "yearly", "lifetime"]);
+const requestStatus = z.enum(["pending", "approved", "rejected"]);
+const timestamp = z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Invalid timestamp");
+const requestInsert = z.object({
+  // Legacy callers send these, but authority comes exclusively from the session.
+  user_id: z.unknown().optional(),
+  status: z.unknown().optional(),
+  full_name: z.string().trim().min(1, "Full name is required.").max(100),
+  email: z.string().trim().email("A valid email is required.").max(254),
+  phone: z.string().trim().min(7, "A valid phone number is required.").max(30)
+    .regex(/^\+?[\d\s()\-]+$/, "A valid phone number is required."),
+  plan_type: requestPlan,
+  message: z.string().trim().max(300).nullable().optional(),
+});
+const subscriptionWrite = z.object({
+  user_id: z.string().optional(),
+  // Never trust this client field; the authenticated admin is written instead.
+  activated_by: z.unknown().optional(),
+  plan_type: subscriptionPlan.optional(),
+  status: subscriptionStatus.optional(),
+  activated_at: timestamp.nullable().optional(),
+  expires_at: timestamp.nullable().optional(),
+});
+const requestUpdate = z.object({
+  status: requestStatus.optional(),
+  reviewed_at: timestamp.nullable().optional(),
+  admin_notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+function oneObject(value: unknown): Record<string, unknown> {
+  const row = Array.isArray(value) ? value.length === 1 ? value[0] : null : value;
+  if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("A single mutation object is required.");
+  return row as Record<string, unknown>;
+}
+function legacyUuid(value: unknown, clerkId: string, legacyId: string): string {
+  if (value === clerkId) return legacyId;
+  return uuid.parse(value);
+}
+async function profileExists(userId: string): Promise<boolean> {
+  return !!(await pool.query("SELECT 1 FROM lovable_legacy.profiles WHERE user_id=$1::uuid LIMIT 1", [userId])).rows[0];
+}
+async function upsertSubscriptionWithoutUniqueConstraint(values: [string, string, string, string | null, string | null, string]) {
+  // The imported legacy schema currently has no unique index on subscriptions.user_id,
+  // despite the original table definition. Serialize this compatibility fallback so it
+  // retains one-row-per-user upsert behavior until the schema is repaired.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [values[0]]);
+    const updated = await client.query(`UPDATE lovable_legacy.subscriptions SET plan_type=$2, status=$3,
+      activated_at=$4::timestamptz, expires_at=$5::timestamptz, activated_by=$6::uuid, updated_at=now()
+      WHERE user_id=$1::uuid RETURNING *`, values);
+    if (updated.rows.length) { await client.query("COMMIT"); return updated; }
+    const inserted = await client.query(`INSERT INTO lovable_legacy.subscriptions
+      (user_id,plan_type,status,activated_at,expires_at,activated_by)
+      VALUES ($1::uuid,$2,$3,$4::timestamptz,$5::timestamptz,$6::uuid) RETURNING *`, values);
+    await client.query("COMMIT");
+    return inserted;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+}
+function targetFilter(filters: { column: string; value?: unknown }[], clerkId: string, legacyId: string): { column: "id" | "user_id"; value: string } {
+  const id = filters.find((filter) => filter.column === "id")?.value;
+  const userId = filters.find((filter) => filter.column === "user_id")?.value;
+  if (id !== undefined) return { column: "id", value: uuid.parse(id) };
+  if (userId !== undefined) return { column: "user_id", value: legacyUuid(userId, clerkId, legacyId) };
+  throw new Error("An id or user_id filter is required.");
+}
+async function mutateSubscriptions(req: AuthenticatedRequest, table: "subscriptions" | "subscription_requests", action: string, rawValues: unknown, filters: { column: string; value?: unknown }[], res: import("express").Response): Promise<void> {
+  const actor = await identity(req);
+  const values = oneObject(rawValues ?? {});
+  if (table === "subscriptions") {
+    if (!actor.isAdmin) { res.status(403).json({ data: null, error: "Administrator access is required to manage subscriptions." }); return; }
+    if (!["insert", "upsert", "update"].includes(action)) { res.status(400).json({ data: null, error: "Unsupported subscription mutation." }); return; }
+    const write = subscriptionWrite.parse(values);
+    if (action === "insert" || action === "upsert") {
+      if (!write.user_id || !write.plan_type || !write.status) throw new Error("user_id, plan_type, and status are required.");
+      const targetUserId = legacyUuid(write.user_id, req.userId, actor.legacyId);
+      if (!(await profileExists(targetUserId))) throw new Error("The subscription user must have a profile.");
+      const queryValues: [string, string, string, string | null, string | null, string] = [targetUserId, write.plan_type, write.status, write.activated_at ?? null, write.expires_at ?? null, actor.legacyId];
+      let result;
+      if (action === "insert") {
+        result = await pool.query(`INSERT INTO lovable_legacy.subscriptions
+            (user_id,plan_type,status,activated_at,expires_at,activated_by)
+            VALUES ($1::uuid,$2,$3,$4::timestamptz,$5::timestamptz,$6::uuid) RETURNING *`, queryValues);
+      } else {
+        try {
+          result = await pool.query(`INSERT INTO lovable_legacy.subscriptions
+            (user_id,plan_type,status,activated_at,expires_at,activated_by)
+            VALUES ($1::uuid,$2,$3,$4::timestamptz,$5::timestamptz,$6::uuid)
+            ON CONFLICT (user_id) DO UPDATE SET plan_type=EXCLUDED.plan_type, status=EXCLUDED.status,
+              activated_at=EXCLUDED.activated_at, expires_at=EXCLUDED.expires_at,
+              activated_by=EXCLUDED.activated_by, updated_at=now() RETURNING *`, queryValues);
+        } catch (error) {
+          if ((error as { code?: string }).code !== "42P10") throw error;
+          result = await upsertSubscriptionWithoutUniqueConstraint(queryValues);
+        }
+      }
+      res.status(action === "insert" ? 201 : 200).json({ data: result.rows, error: null }); return;
+    }
+    const target = targetFilter(filters, req.userId, actor.legacyId);
+    if (target.column === "user_id" && !(await profileExists(target.value))) throw new Error("The subscription user must have a profile.");
+    const data = Object.fromEntries(Object.entries(write).filter(([key]) => key !== "user_id" && key !== "activated_by"));
+    if (!Object.keys(data).length) throw new Error("No writable fields supplied.");
+    const keys = Object.keys(data);
+    const result = await pool.query(`UPDATE lovable_legacy.subscriptions SET ${keys.map((key, index) => `${key}=$${index + 1}`).join(",")}, activated_by=$${keys.length + 1}::uuid, updated_at=now() WHERE ${target.column}=$${keys.length + 2}::uuid RETURNING *`,
+      [...Object.values(data), actor.legacyId, target.value]);
+    res.json({ data: result.rows, error: null }); return;
+  }
+
+  if (action === "insert") {
+    const insert = requestInsert.parse(values);
+    // The caller's user_id is deliberately ignored: Clerk IDs are never stored in UUID columns.
+    if (!(await profileExists(actor.legacyId))) throw new Error("Your account does not have a legacy profile.");
+    const result = await pool.query(`INSERT INTO lovable_legacy.subscription_requests
+      (user_id,full_name,email,phone,plan_type,message,status)
+      VALUES ($1::uuid,$2,$3,$4,$5,$6,'pending') RETURNING *`,
+    [actor.legacyId, insert.full_name, insert.email, insert.phone, insert.plan_type, insert.message ?? null]);
+    res.status(201).json({ data: result.rows, error: null }); return;
+  }
+  if (action !== "update") { res.status(400).json({ data: null, error: "Unsupported subscription request mutation." }); return; }
+  if (!actor.isAdmin) { res.status(403).json({ data: null, error: "Administrator access is required to review subscription requests." }); return; }
+  const update = requestUpdate.parse(values);
+  if (!Object.keys(update).length) throw new Error("No writable fields supplied.");
+  const target = targetFilter(filters, req.userId, actor.legacyId);
+  if (target.column === "user_id" && !(await profileExists(target.value))) throw new Error("The request user must have a profile.");
+  const keys = Object.keys(update);
+  const result = await pool.query(`UPDATE lovable_legacy.subscription_requests SET ${keys.map((key, index) => `${key}=$${index + 1}`).join(",")}, reviewed_by=$${keys.length + 1}::uuid, updated_at=now() WHERE ${target.column}=$${keys.length + 2}::uuid RETURNING *`,
+    [...Object.values(update), actor.legacyId, target.value]);
+  res.json({ data: result.rows, error: null });
+}
 async function owns(client: typeof pool, table: string, id: string, uid: string): Promise<boolean> {
   const q = table === "user_bundle_items"
     ? "SELECT 1 FROM lovable_legacy.user_bundle_items WHERE id=$1::uuid AND user_id=$2::uuid"
@@ -29,6 +173,10 @@ router.post("/legacy/mutate", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid mutation" }); return; }
   const { table, action, filters } = parsed.data;
   try {
+      if (table === "subscriptions" || table === "subscription_requests") {
+        await mutateSubscriptions(req as AuthenticatedRequest, table, action, parsed.data.values, filters, res);
+        return;
+      }
     const uid = await user(req as AuthenticatedRequest); const values = parsed.data.values ?? {};
     const allowed = columns[table]; const data = Object.fromEntries(Object.entries(values).filter(([k]) => allowed.includes(k)));
     const id = uuidFilter(filters);
