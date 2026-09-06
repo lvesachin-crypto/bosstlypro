@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import { clerkClient } from "@clerk/express";
 import { pool } from "@workspace/db";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+import { decryptProviderCredential, encryptProviderCredential } from "../lib/providerCredentials";
 
 const router: IRouter = Router();
 router.use(requireAuth);
@@ -12,22 +12,6 @@ async function legacyId(req: AuthenticatedRequest): Promise<string> {
   const id = (await clerkClient.users.getUser(req.userId)).externalId;
   if (!id) throw new Error("Your account is not linked to legacy data.");
   return id;
-}
-function key(): Buffer {
-  if (!process.env.PROVIDER_KEY_SECRET) throw new Error("Provider credentials are unavailable: PROVIDER_KEY_SECRET is not configured.");
-  return createHash("sha256").update(process.env.PROVIDER_KEY_SECRET).digest();
-}
-function encrypt(value: string): string {
-  const iv = randomBytes(12); const cipher = createCipheriv("aes-256-gcm", key(), iv);
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final(), cipher.getAuthTag()]);
-  return Buffer.concat([iv, ciphertext]).toString("base64");
-}
-function decrypt(value: string): string {
-  const source = Buffer.from(value, "base64");
-  if (source.length < 29) throw new Error("Stored provider credential is invalid.");
-  const iv = source.subarray(0, 12); const tag = source.subarray(source.length - 16);
-  const decipher = createDecipheriv("aes-256-gcm", key(), iv); decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(source.subarray(12, -16)), decipher.final()]).toString("utf8");
 }
 function panelUrl(value: string): string {
   const url = new URL(value);
@@ -67,7 +51,7 @@ router.post("/functions/user-provider-manage", async (req, res): Promise<void> =
       const row = await pool.query(`INSERT INTO lovable_legacy.user_provider_accounts
         (user_id,name,api_url,api_key_ciphertext,api_key_hint,is_active,balance_cached,balance_currency,last_tested_at,last_test_ok,last_test_error)
         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,now(),$6,$9) RETURNING id`,
-        [userId, data.name.trim(), apiUrl, encrypt(data.api_key.trim()), data.api_key.trim().slice(-4), ok, ok ? Number(test.balance) : null, ok ? (test.currency ?? null) : null, ok ? null : String(test.error ?? "Unknown")]);
+        [userId, data.name.trim(), apiUrl, encryptProviderCredential(data.api_key.trim()), data.api_key.trim().slice(-4), ok, ok ? Number(test.balance) : null, ok ? (test.currency ?? null) : null, ok ? null : String(test.error ?? "Unknown")]);
       res.json({ id: row.rows[0].id, ok, test }); return;
     }
     if (data.op === "place_order") {
@@ -77,7 +61,7 @@ router.post("/functions/user-provider-manage", async (req, res): Promise<void> =
         WHERE s.id=$1::uuid AND s.user_id=$2::uuid AND p.user_id=$2::uuid`, [data.user_service_id, userId]);
       if (!service.rows[0]) { res.status(404).json({ error: "Service not found" }); return; }
       const row = service.rows[0];
-      const response = await panel(row.api_url, decrypt(row.api_key_ciphertext), "add", { service: row.provider_service_id, link: data.link.trim(), quantity: data.quantity });
+      const response = await panel(row.api_url, decryptProviderCredential(row.api_key_ciphertext), "add", { service: row.provider_service_id, link: data.link.trim(), quantity: data.quantity });
       if (response?.error) { res.status(400).json({ error: String(response.error) }); return; }
       res.json({ ok: true, provider_response: response }); return;
     }
@@ -90,10 +74,10 @@ router.post("/functions/user-provider-manage", async (req, res): Promise<void> =
       const test = await panel(account.api_url, data.api_key.trim(), "balance").catch((error: unknown) => ({ error: error instanceof Error ? error.message : "Connection failed" }));
       const ok = !test.error && test.balance !== undefined;
       await pool.query(`UPDATE lovable_legacy.user_provider_accounts SET api_key_ciphertext=$1,api_key_hint=$2,is_active=$3,last_tested_at=now(),last_test_ok=$3,last_test_error=$4,balance_cached=COALESCE($5,balance_cached),balance_currency=COALESCE($6,balance_currency) WHERE id=$7::uuid`,
-        [encrypt(data.api_key.trim()), data.api_key.trim().slice(-4), ok, ok ? null : String(test.error ?? "Unknown"), ok ? Number(test.balance) : null, ok ? (test.currency ?? null) : null, id]);
+        [encryptProviderCredential(data.api_key.trim()), data.api_key.trim().slice(-4), ok, ok ? null : String(test.error ?? "Unknown"), ok ? Number(test.balance) : null, ok ? (test.currency ?? null) : null, id]);
       res.json({ ok, test }); return;
     }
-    const credential = decrypt(account.api_key_ciphertext);
+    const credential = decryptProviderCredential(account.api_key_ciphertext);
     if (data.op === "test") {
       const test = await panel(account.api_url, credential, "balance").catch((error: unknown) => ({ error: error instanceof Error ? error.message : "Connection failed" }));
       const ok = !test.error && test.balance !== undefined;

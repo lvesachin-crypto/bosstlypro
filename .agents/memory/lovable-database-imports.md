@@ -32,3 +32,9 @@ Engagement orders built from a user's own provider bundle must not debit the Boo
 **Why:** The original product charges fulfillment against the user's connected provider account. Debiting the site wallet as well would charge the same order twice.
 
 **How to apply:** Ignore client-supplied prices and identity, verify bundle/service ownership, recompute cost from owned provider services, and roll back the complete order if any item or schedule is invalid.
+
+Imported provider API-key ciphertext cannot be reused when the source Edge Function encryption secret is absent from the backup. Require each affected user to re-enter the provider key once.
+
+**Why:** The database contains ciphertext and key hints, but neither the PostgreSQL dump nor Supabase Vault contains the secret needed to decrypt it. Guessing or bypassing encryption cannot recover the credential safely.
+
+**How to apply:** Keep imported provider metadata and mappings, show an explicit re-entry error, encrypt replacement keys with the current server secret, and never request provider keys through chat.
