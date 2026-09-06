@@ -20,3 +20,9 @@ After a password-digest migration, disable the Clerk instance HIBP check and cle
 **Why:** Clerk can accept a valid migrated bcrypt digest yet still block login and force a reset when the password appears in breach data.
 
 **How to apply:** Update the Clerk instance with `hibp: false`, then use Clerk's supported `unsetPasswordCompromised` backend operation for migrated users identified by legacy external IDs. Explain that this weakens breach protection.
+
+For migrated users who must retain password-only login, verify the original bcrypt digest server-side and exchange successful verification for a short-lived, one-use Clerk sign-in ticket.
+
+**Why:** Replit-managed Clerk may enforce Device Trust on every new device even after HIBP is disabled, and accountless applications do not expose the setting needed to turn that verification off.
+
+**How to apply:** Keep digests server-only, rate-limit attempts, use parameterized PostgreSQL `crypt` verification, issue a 60-second Clerk ticket, and redeem it in the browser. Never return hashes or log passwords.
