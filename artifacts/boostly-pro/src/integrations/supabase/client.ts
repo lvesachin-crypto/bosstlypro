@@ -71,8 +71,8 @@ class LegacyQuery implements PromiseLike<Result> {
 
 export const supabase: any = {
   from: (table: string) => new LegacyQuery(table),
-  rpc: async (name: string, _args?: Record<string, unknown>): Promise<Result> => {
-    if (name !== "get_admin_users_summary") {
+  rpc: async (name: string, args?: Record<string, unknown>): Promise<Result> => {
+    if (!["get_admin_users_summary", "reschedule_organic_run"].includes(name)) {
       return unavailable("This legacy RPC is unavailable through the current API.");
     }
     try {
@@ -80,7 +80,7 @@ export const supabase: any = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, args }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body.error) return unavailable(body.error || `Legacy RPC failed (${response.status})`);

@@ -9,9 +9,23 @@ router.use(requireAuth);
 
 // Kept intentionally small: this is a compatibility endpoint, not a general
 // database-function proxy.
-const requestSchema = z.object({
-  name: z.literal("get_admin_users_summary"),
-}).strict();
+const requestSchema = z.discriminatedUnion("name", [
+  z.object({ name: z.literal("get_admin_users_summary"), args: z.unknown().optional() }).strict(),
+  z.object({
+    name: z.literal("reschedule_organic_run"),
+    args: z.object({
+      p_run_id: z.string().uuid(),
+      p_quantity: z.coerce.number().int().positive(),
+      p_scheduled_at: z.string().datetime(),
+    }).strict(),
+  }).strict(),
+]);
+
+async function getLegacyId(req: AuthenticatedRequest): Promise<string> {
+  const clerkUser = await clerkClient.users.getUser(req.userId);
+  if (!clerkUser.externalId) throw new Error("Your account is not linked to legacy data.");
+  return clerkUser.externalId;
+}
 
 async function requireLegacyAdmin(req: AuthenticatedRequest): Promise<void> {
   const clerkUser = await clerkClient.users.getUser(req.userId);
@@ -42,6 +56,77 @@ router.post("/legacy/rpc", async (req, res): Promise<void> => {
   }
 
   try {
+    if (parsed.data.name === "reschedule_organic_run") {
+      const legacyId = await getLegacyId(req as AuthenticatedRequest);
+      const { p_run_id, p_quantity, p_scheduled_at } = parsed.data.args;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const runResult = await client.query(
+          `SELECT rs.id,rs.status
+             FROM lovable_legacy.organic_run_schedule rs
+             LEFT JOIN lovable_legacy.engagement_order_items eoi
+               ON eoi.id=rs.engagement_order_item_id
+             LEFT JOIN lovable_legacy.engagement_orders eo
+               ON eo.id=eoi.engagement_order_id
+            WHERE rs.id=$1::uuid AND eo.user_id=$2::uuid
+            FOR UPDATE OF rs`,
+          [p_run_id, legacyId],
+        );
+        const run = runResult.rows[0];
+        if (!run) throw new Error("Run not found or you do not have permission to edit it.");
+        if (["completed", "partial", "sent", "cancelled"].includes(String(run.status).toLowerCase())) {
+          throw new Error("Cannot reschedule a completed or cancelled run.");
+        }
+
+        await client.query(
+          `UPDATE lovable_legacy.organic_run_schedule
+              SET quantity_to_send=$1,
+                  base_quantity=$1,
+                  variance_applied=0,
+                  scheduled_at=$2::timestamptz,
+                  status='pending',
+                  error_message=NULL,
+                  retry_count=0,
+                  provider_order_id=NULL,
+                  provider_response=NULL,
+                  provider_status=NULL,
+                  provider_start_count=NULL,
+                  provider_remains=NULL,
+                  provider_charge=NULL,
+                  last_status_check=NULL,
+                  started_at=NULL,
+                  completed_at=NULL,
+                  provider_account_id=NULL,
+                  provider_account_name=NULL,
+                  user_provider_account_id=NULL,
+                  user_provider_account_name=NULL,
+                  rotation_lock_key=NULL,
+                  updated_at=now()
+            WHERE id=$3::uuid`,
+          [p_quantity, p_scheduled_at, p_run_id],
+        );
+        await client.query("COMMIT");
+        res.json({
+          data: {
+            success: true,
+            run_id: p_run_id,
+            quantity_to_send: p_quantity,
+            scheduled_at: p_scheduled_at,
+            extra_charged: 0,
+            new_balance: 0,
+          },
+          error: null,
+        });
+        return;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
     await requireLegacyAdmin(req as AuthenticatedRequest);
     // Each related relation is read in an independent lateral subquery. This
     // preserves profiles as the base relation and prevents aggregate joins
@@ -109,7 +194,7 @@ router.post("/legacy/rpc", async (req, res): Promise<void> => {
   } catch (error) {
     const status = (error as Error & { status?: number }).status
       ?? (error instanceof Error && error.message.includes("not linked") ? 401 : 500);
-    if (status >= 500) console.warn("[legacy-rpc] get_admin_users_summary failed");
+    if (status >= 500) console.warn(`[legacy-rpc] ${parsed.success ? parsed.data.name : "unknown"} failed`);
     res.status(status).json({
       data: null,
       error: error instanceof Error ? error.message : "Legacy RPC failed",
