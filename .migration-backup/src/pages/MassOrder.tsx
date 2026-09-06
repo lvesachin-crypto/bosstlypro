@@ -76,7 +76,7 @@ export default function MassOrder() {
     queryFn: async () => {
       const { data } = await supabase
         .from('user_bundles')
-        .select('id, name, platform, user_bundle_items(id, engagement_type)')
+        .select('id, name, platform, user_bundle_items(id, engagement_type, price_per_k, user_service_id, user_bundle_item_providers(user_provider_account_id, provider_service_id, priority, enabled))')
         .order('created_at', { ascending: false });
       return data || [];
     },
@@ -176,18 +176,30 @@ export default function MassOrder() {
     setSubmitting(true);
     try {
       let ok = 0, fail = 0;
+      let firstError = '';
       for (const r of rows) {
         const hours = timeframeToHours(r.timeframe);
         const engagements = Object.keys(r.types)
           .filter((t) => r.types[t])
           .map((t) => {
             const q = r.qty[t] ?? Math.round(r.base_quantity * (RATIOS[t] || 0));
+            const bundleItem = items.find((item: any) => item.engagement_type === t);
+            const providerMappings = (bundleItem?.user_bundle_item_providers || [])
+              .filter((mapping: any) => mapping.enabled && mapping.provider_service_id)
+              .sort((a: any, b: any) => (a.priority ?? 999) - (b.priority ?? 999));
             const priceK = serviceMap[t]?.price ?? 0;
             return {
               type: t,
               quantity: q,
               price: (q / 1000) * priceK,
               service_id: serviceMap[t]?.service_id ?? null,
+              user_service_id: bundleItem?.user_service_id ?? null,
+              user_bundle_item_id: bundleItem?.id ?? null,
+              provider_mappings: providerMappings.map((mapping: any) => ({
+                user_provider_account_id: mapping.user_provider_account_id,
+                provider_service_id: mapping.provider_service_id,
+                priority: mapping.priority,
+              })),
               time_limit_hours: hours,
               variance_percent: 15,
               peak_hours_enabled: false,
@@ -196,6 +208,12 @@ export default function MassOrder() {
           .filter((e) => e.quantity > 0);
 
         if (!engagements.length) { fail++; continue; }
+        const missingMapping = engagements.find((engagement) => engagement.provider_mappings.length === 0);
+        if (missingMapping) {
+          firstError ||= `${missingMapping.type} has no provider service mapped. Configure it in My Bundles.`;
+          fail++;
+          continue;
+        }
 
         const { data: sessionData } = await supabase.auth.getSession();
         const accessToken = sessionData.session?.access_token;
@@ -213,9 +231,15 @@ export default function MassOrder() {
           },
           headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
         });
-        if (error || (data as any)?.error) { console.error('Mass order row failed:', error || (data as any)?.error, r.link); fail++; } else ok++;
+        if (error || (data as any)?.error) {
+          const message = (data as any)?.error || error?.message || 'Order failed';
+          console.error('Mass order row failed:', message, r.link);
+          firstError ||= message;
+          fail++;
+        } else ok++;
       }
       toast[ok ? 'success' : 'error'](`Submitted ${ok}/${rows.length} orders${fail ? ` (${fail} failed)` : ''}`);
+      if (firstError) toast.error(firstError);
       if (ok) { setRows([]); setRaw(''); setCampaign(''); }
     } catch (e: any) {
       toast.error(e.message);
