@@ -61,13 +61,37 @@ router.post("/auth/legacy-login", async (req, res): Promise<void> => {
     return;
   }
   const headers = { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" };
-  const usersResponse = await fetch("https://api.clerk.com/v1/users?limit=100", { headers });
+  const usersUrl = new URL("https://api.clerk.com/v1/users");
+  usersUrl.searchParams.set("limit", "1");
+  usersUrl.searchParams.append("email_address", parsed.data.email);
+  const usersResponse = await fetch(usersUrl, { headers });
   if (!usersResponse.ok) {
     res.status(503).json({ error: "Authentication is temporarily unavailable." });
     return;
   }
   const users = (await usersResponse.json()) as Array<{ id: string; external_id?: string | null }>;
-  const clerkUser = users.find((user) => user.external_id === legacy.rows[0].legacy_id);
+  let clerkUser = users.find((user) => user.external_id === legacy.rows[0].legacy_id);
+  if (!clerkUser && users[0] && !users[0].external_id) {
+    const linkResponse = await fetch(`https://api.clerk.com/v1/users/${users[0].id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ external_id: legacy.rows[0].legacy_id }),
+    });
+    if (linkResponse.ok) clerkUser = await linkResponse.json() as { id: string; external_id?: string | null };
+  }
+  if (!clerkUser && users.length === 0) {
+    const createResponse = await fetch("https://api.clerk.com/v1/users", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        external_id: legacy.rows[0].legacy_id,
+        email_address: [parsed.data.email.toLowerCase()],
+        skip_password_requirement: true,
+        skip_password_checks: true,
+      }),
+    });
+    if (createResponse.ok) clerkUser = await createResponse.json() as { id: string; external_id?: string | null };
+  }
   if (!clerkUser) {
     res.status(503).json({ error: "Imported account is not linked yet." });
     return;
