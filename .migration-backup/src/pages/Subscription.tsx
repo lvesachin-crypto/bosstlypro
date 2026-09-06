@@ -47,7 +47,7 @@ const FEATURES: Record<string, string[]> = {
   ],
   yearly: [
     'Everything in Monthly',
-    'Save $369 vs monthly',
+    'Save $269 vs monthly',
     'Priority support',
     '365 days access',
     'Best value ⭐',
@@ -78,7 +78,15 @@ export default function Subscription() {
         .eq('is_active', true)
         .order('sort_order');
       if (error) throw error;
-      return (data || []) as Plan[];
+      return ((data || []) as Plan[]).map((plan) => {
+        if (plan.plan_type === 'yearly') {
+          return { ...plan, price_usd: 199, price_inr: 17910 };
+        }
+        if (plan.plan_type === 'lifetime') {
+          return { ...plan, price_usd: 399, price_inr: 35910 };
+        }
+        return plan;
+      });
     },
   });
 
