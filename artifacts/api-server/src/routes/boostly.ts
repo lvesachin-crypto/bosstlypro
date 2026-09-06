@@ -83,7 +83,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
              FROM lovable_legacy.engagement_orders o
              LEFT JOIN lovable_legacy.engagement_order_items i ON i.engagement_order_id = o.id
             WHERE o.user_id = $1::uuid
-            GROUP BY o.id
+            GROUP BY o.id, o.order_number, o.status, o.total_price, o.link, o.created_at, o.base_quantity
             ORDER BY o.created_at DESC
             LIMIT 5`,
           [legacyId],
