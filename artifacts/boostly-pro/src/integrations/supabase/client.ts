@@ -1,7 +1,7 @@
 /**
  * Small authenticated PostgREST-shaped reader for restored legacy screens.
- * It intentionally exposes no browser database credentials and keeps writes,
- * RPCs, storage and external edge functions unavailable.
+ * It intentionally exposes no browser database credentials. The small write
+ * surface below is restricted server-side to the restored provider/bundle flow.
  */
 type Filter = { operator: "eq" | "neq" | "in" | "is"; column: string; value: unknown };
 type Result = { data: any; error: Error | null };
@@ -16,6 +16,8 @@ class LegacyQuery implements PromiseLike<Result> {
   private take?: number;
   private page?: { from: number; to: number };
   private selected?: string;
+  private mutation?: "insert" | "update" | "upsert" | "delete";
+  private values?: unknown;
 
   constructor(private readonly table: string) {}
 
@@ -31,13 +33,13 @@ class LegacyQuery implements PromiseLike<Result> {
   range(from: number, to: number): this { this.page = { from, to }; return this; }
   async execute(): Promise<Result> {
     try {
-      const response = await fetch("/api/legacy/query", {
+      const response = await fetch(this.mutation ? "/api/legacy/mutate" : "/api/legacy/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
         body: JSON.stringify({
           table: this.table, filters: this.filters, order: this.sort, limit: this.take,
-          range: this.page, select: this.selected,
+          range: this.page, select: this.selected, action: this.mutation, values: this.values,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -61,23 +63,31 @@ class LegacyQuery implements PromiseLike<Result> {
       ? unavailable("Expected at most one row, but multiple rows were returned.")
       : { data: result.data?.[0] ?? null, error: null });
   }
-  insert(_values?: unknown): LegacyQuery { return this.unavailableWrite(); }
-  update(_values?: unknown): LegacyQuery { return this.unavailableWrite(); }
-  upsert(_values?: unknown): LegacyQuery { return this.unavailableWrite(); }
-  delete(): LegacyQuery { return this.unavailableWrite(); }
-  private unavailableWrite(): LegacyQuery {
-    const query = new LegacyQuery(this.table);
-    query.execute = async () => unavailable("Legacy writes are unavailable. Payments, provider configuration, and fulfillment are not emulated.");
-    return query;
-  }
+  insert(values?: unknown): this { this.mutation = "insert"; this.values = values; return this; }
+  update(values?: unknown): this { this.mutation = "update"; this.values = values; return this; }
+  upsert(values?: unknown): this { this.mutation = "upsert"; this.values = values; return this; }
+  delete(): this { this.mutation = "delete"; return this; }
 }
 
 export const supabase: any = {
   from: (table: string) => new LegacyQuery(table),
   rpc: async () => unavailable("Legacy RPC operations are unavailable through the current API."),
-  functions: { invoke: async () => unavailable("External legacy edge functions are unavailable; payment, provider sync, and fulfillment are not emulated.") },
+  functions: {
+    invoke: async (name: string, options?: { body?: unknown; headers?: Record<string, string> }) => {
+      if (name !== "user-provider-manage") return unavailable("This legacy function is unavailable.");
+      try {
+        const headers = { "Content-Type": "application/json", ...(options?.headers ?? {}) };
+        // Clerk authenticates this same-origin request with its session cookie.
+        // The compatibility marker only satisfies old callers that expect a session.
+        if (headers.Authorization === "Bearer legacy-cookie") delete headers.Authorization;
+        const response = await fetch("/api/functions/user-provider-manage", { method: "POST", headers, credentials: "same-origin", body: JSON.stringify(options?.body ?? {}) });
+        const body = await response.json().catch(() => ({}));
+        return !response.ok || body.error ? unavailable(body.error || `Provider request failed (${response.status})`) : { data: body, error: null };
+      } catch (error) { return unavailable(error instanceof Error ? error.message : "Provider request failed"); }
+    },
+  },
   auth: {
-    getSession: async () => ({ data: { session: null }, error: null }),
+    getSession: async () => ({ data: { session: { access_token: "legacy-cookie" } }, error: null }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     signOut: async () => ({ error: null }),
   },

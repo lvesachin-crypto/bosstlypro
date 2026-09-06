@@ -1,0 +1,124 @@
+import { Router, type IRouter } from "express";
+import { clerkClient } from "@clerk/express";
+import { pool } from "@workspace/db";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { z } from "zod";
+import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+
+const router: IRouter = Router();
+router.use(requireAuth);
+
+async function legacyId(req: AuthenticatedRequest): Promise<string> {
+  const id = (await clerkClient.users.getUser(req.userId)).externalId;
+  if (!id) throw new Error("Your account is not linked to legacy data.");
+  return id;
+}
+function key(): Buffer {
+  if (!process.env.PROVIDER_KEY_SECRET) throw new Error("Provider credentials are unavailable: PROVIDER_KEY_SECRET is not configured.");
+  return createHash("sha256").update(process.env.PROVIDER_KEY_SECRET).digest();
+}
+function encrypt(value: string): string {
+  const iv = randomBytes(12); const cipher = createCipheriv("aes-256-gcm", key(), iv);
+  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final(), cipher.getAuthTag()]);
+  return Buffer.concat([iv, ciphertext]).toString("base64");
+}
+function decrypt(value: string): string {
+  const source = Buffer.from(value, "base64");
+  if (source.length < 29) throw new Error("Stored provider credential is invalid.");
+  const iv = source.subarray(0, 12); const tag = source.subarray(source.length - 16);
+  const decipher = createDecipheriv("aes-256-gcm", key(), iv); decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(source.subarray(12, -16)), decipher.final()]).toString("utf8");
+}
+function panelUrl(value: string): string {
+  const url = new URL(value);
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== "https:" || host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") ||
+      /^127\.|^10\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)) throw new Error("Panel API URL must be a public https:// URL.");
+  return url.toString().replace(/\/$/, "");
+}
+async function panel(apiUrl: string, apiKey: string, action: string, extra: Record<string, string | number> = {}): Promise<any> {
+  const url = panelUrl(apiUrl);
+  const params = new URLSearchParams({ key: apiKey, action, ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])) });
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "BoostlyPro/1.0 (+api)" }, body: params, signal: AbortSignal.timeout(8_000) });
+  const text = await response.text();
+  try { return JSON.parse(text); } catch { throw new Error(`Panel did not return JSON (HTTP ${response.status}).`); }
+}
+async function provider(id: string, userId: string): Promise<any | null> {
+  const result = await pool.query("SELECT * FROM lovable_legacy.user_provider_accounts WHERE id=$1::uuid AND user_id=$2::uuid", [id, userId]);
+  return result.rows[0] ?? null;
+}
+const body = z.object({
+  op: z.enum(["create", "rotate_key", "test", "import_services", "validate_service", "place_order"]),
+  id: z.string().uuid().optional(), name: z.string().optional(), api_url: z.string().optional(), api_key: z.string().optional(),
+  account_id: z.string().uuid().optional(), service_id: z.string().optional(), user_service_id: z.string().uuid().optional(),
+  link: z.string().optional(), quantity: z.coerce.number().optional(),
+});
+
+router.post("/functions/user-provider-manage", async (req, res): Promise<void> => {
+  const parsed = body.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }); return; }
+  try {
+    const data = parsed.data; const userId = await legacyId(req as AuthenticatedRequest);
+    if (data.op === "create") {
+      if (!data.name?.trim() || !data.api_url?.trim() || !data.api_key?.trim()) { res.status(400).json({ error: "name, api_url, api_key required" }); return; }
+      const apiUrl = panelUrl(data.api_url.trim());
+      const test = await panel(apiUrl, data.api_key.trim(), "balance").catch((error: unknown) => ({ error: error instanceof Error ? error.message : "Connection failed" }));
+      const ok = !test.error && test.balance !== undefined;
+      const row = await pool.query(`INSERT INTO lovable_legacy.user_provider_accounts
+        (user_id,name,api_url,api_key_ciphertext,api_key_hint,is_active,balance_cached,balance_currency,last_tested_at,last_test_ok,last_test_error)
+        VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,now(),$6,$9) RETURNING id`,
+        [userId, data.name.trim(), apiUrl, encrypt(data.api_key.trim()), data.api_key.trim().slice(-4), ok, ok ? Number(test.balance) : null, ok ? (test.currency ?? null) : null, ok ? null : String(test.error ?? "Unknown")]);
+      res.json({ id: row.rows[0].id, ok, test }); return;
+    }
+    if (data.op === "place_order") {
+      if (!data.user_service_id || !data.link?.trim() || !data.quantity || data.quantity <= 0) { res.status(400).json({ error: "user_service_id, link, quantity required" }); return; }
+      const service = await pool.query(`SELECT s.*, p.api_url, p.api_key_ciphertext FROM lovable_legacy.user_services s
+        JOIN lovable_legacy.user_provider_accounts p ON p.id=s.user_provider_account_id
+        WHERE s.id=$1::uuid AND s.user_id=$2::uuid AND p.user_id=$2::uuid`, [data.user_service_id, userId]);
+      if (!service.rows[0]) { res.status(404).json({ error: "Service not found" }); return; }
+      const row = service.rows[0];
+      const response = await panel(row.api_url, decrypt(row.api_key_ciphertext), "add", { service: row.provider_service_id, link: data.link.trim(), quantity: data.quantity });
+      if (response?.error) { res.status(400).json({ error: String(response.error) }); return; }
+      res.json({ ok: true, provider_response: response }); return;
+    }
+    const id = data.id ?? data.account_id;
+    if (!id) { res.status(400).json({ error: "Provider id required" }); return; }
+    const account = await provider(id, userId);
+    if (!account) { res.status(404).json({ error: "Provider account not found" }); return; }
+    if (data.op === "rotate_key") {
+      if (!data.api_key?.trim()) { res.status(400).json({ error: "api_key required" }); return; }
+      const test = await panel(account.api_url, data.api_key.trim(), "balance").catch((error: unknown) => ({ error: error instanceof Error ? error.message : "Connection failed" }));
+      const ok = !test.error && test.balance !== undefined;
+      await pool.query(`UPDATE lovable_legacy.user_provider_accounts SET api_key_ciphertext=$1,api_key_hint=$2,is_active=$3,last_tested_at=now(),last_test_ok=$3,last_test_error=$4,balance_cached=COALESCE($5,balance_cached),balance_currency=COALESCE($6,balance_currency) WHERE id=$7::uuid`,
+        [encrypt(data.api_key.trim()), data.api_key.trim().slice(-4), ok, ok ? null : String(test.error ?? "Unknown"), ok ? Number(test.balance) : null, ok ? (test.currency ?? null) : null, id]);
+      res.json({ ok, test }); return;
+    }
+    const credential = decrypt(account.api_key_ciphertext);
+    if (data.op === "test") {
+      const test = await panel(account.api_url, credential, "balance").catch((error: unknown) => ({ error: error instanceof Error ? error.message : "Connection failed" }));
+      const ok = !test.error && test.balance !== undefined;
+      await pool.query("UPDATE lovable_legacy.user_provider_accounts SET is_active=$1,last_tested_at=now(),last_test_ok=$1,last_test_error=$2,balance_cached=COALESCE($3,balance_cached),balance_currency=COALESCE($4,balance_currency) WHERE id=$5::uuid", [ok, ok ? null : String(test.error ?? "Unknown"), ok ? Number(test.balance) : null, ok ? (test.currency ?? null) : null, id]);
+      res.json({ ok, test }); return;
+    }
+    if (data.op === "import_services") {
+      const list = await panel(account.api_url, credential, "services");
+      if (!Array.isArray(list)) { res.status(400).json({ error: list?.error ?? "Panel did not return a services array" }); return; }
+      const client = await pool.connect();
+      try { await client.query("BEGIN"); for (const s of list) { const serviceId = String(s.service ?? s.id ?? ""); if (!serviceId) continue;
+        await client.query(`INSERT INTO lovable_legacy.user_services (user_id,user_provider_account_id,provider_service_id,name,category,type,rate,min_quantity,max_quantity,refill,cancel_allowed,is_active,raw)
+          VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,$12::jsonb)
+          ON CONFLICT (user_provider_account_id,provider_service_id) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category,type=EXCLUDED.type,rate=EXCLUDED.rate,min_quantity=EXCLUDED.min_quantity,max_quantity=EXCLUDED.max_quantity,refill=EXCLUDED.refill,cancel_allowed=EXCLUDED.cancel_allowed,is_active=true,raw=EXCLUDED.raw`,
+          [userId,id,serviceId,String(s.name ?? "Unnamed"),s.category ? String(s.category) : null,s.type ? String(s.type) : null,Number(s.rate ?? 0) || 0,Number(s.min ?? 1) || 1,Number(s.max ?? 1000000) || 1000000,Boolean(s.refill),Boolean(s.cancel),JSON.stringify(s)]); } await client.query("COMMIT"); } catch (e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+      res.json({ imported: list.filter((s: any) => String(s.service ?? s.id ?? "")).length }); return;
+    }
+    if (data.op === "validate_service") {
+      const serviceId = data.service_id?.trim(); if (!serviceId || !/^\d+$/.test(serviceId)) { res.json({ ok: false, error: "Service ID must be numeric" }); return; }
+      const cached = await pool.query("SELECT id,name,rate,min_quantity,max_quantity FROM lovable_legacy.user_services WHERE user_provider_account_id=$1::uuid AND provider_service_id=$2", [id, serviceId]);
+      if (cached.rows[0]) { res.json({ ok: true, service: cached.rows[0] }); return; }
+      const list = await panel(account.api_url, credential, "services"); const match = Array.isArray(list) && list.find((s: any) => String(s.service ?? s.id ?? "") === serviceId);
+      res.json(match ? { ok: true, service: { name: String(match.name ?? "Unnamed"), rate: Number(match.rate ?? 0), min_quantity: Number(match.min ?? 1), max_quantity: Number(match.max ?? 1000000) } } : { ok: false, error: `Service ID ${serviceId} not found on this provider` }); return;
+    }
+    res.status(400).json({ error: "Unknown provider operation" });
+  } catch (error) { req.log.warn({ err: error instanceof Error ? error.message : "provider operation failed" }, "Provider operation failed"); res.status(400).json({ error: error instanceof Error ? error.message : "Provider operation failed" }); }
+});
+export default router;

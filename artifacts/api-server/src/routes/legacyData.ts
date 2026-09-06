@@ -59,6 +59,14 @@ function sanitize(row: Record<string, unknown>): Record<string, unknown> {
 
 async function hydrate(table: string, rows: Record<string, unknown>[], select = ""): Promise<void> {
   if (!rows.length) return;
+  if (table === "user_services" && select.includes("provider:")) {
+    const providerIds = [...new Set(rows.map((row) => String(row.user_provider_account_id)).filter(Boolean))];
+    const providers = providerIds.length
+      ? await pool.query<Record<string, unknown>>("SELECT id, name FROM lovable_legacy.user_provider_accounts WHERE id = ANY($1::uuid[])", [providerIds])
+      : { rows: [] as Record<string, unknown>[] };
+    const byId = new Map(providers.rows.map((provider) => [String(provider.id), sanitize(provider)]));
+    for (const row of rows) row.provider = byId.get(String(row.user_provider_account_id)) ?? null;
+  }
   if (table === "engagement_orders" && select.includes("engagement_order_items")) {
     const ids = rows.map((row) => row.id);
     const items = await pool.query<Record<string, unknown>>(
