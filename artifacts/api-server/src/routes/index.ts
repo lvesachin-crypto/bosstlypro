@@ -6,6 +6,7 @@ import legacyDataRouter from "./legacyData";
 import legacyProvidersRouter from "./legacyProviders";
 import legacyMutationsRouter from "./legacyMutations";
 import legacyRpcRouter from "./legacyRpc";
+import legacyEngagementOrdersRouter from "./legacyEngagementOrders";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(legacyDataRouter);
 router.use(legacyProvidersRouter);
 router.use(legacyMutationsRouter);
 router.use(legacyRpcRouter);
+router.use(legacyEngagementOrdersRouter);
 
 export default router;

@@ -26,3 +26,9 @@ For migrated users who must retain password-only login, verify the original bcry
 **Why:** Replit-managed Clerk may enforce Device Trust on every new device even after HIBP is disabled, and accountless applications do not expose the setting needed to turn that verification off.
 
 **How to apply:** Keep digests server-only, rate-limit attempts, use parameterized PostgreSQL `crypt` verification, issue a 60-second Clerk ticket, and redeem it in the browser. Never return hashes or log passwords.
+
+Engagement orders built from a user's own provider bundle must not debit the Boostly wallet; calculate and record provider cost server-side, then create order items and scheduled runs in one transaction.
+
+**Why:** The original product charges fulfillment against the user's connected provider account. Debiting the site wallet as well would charge the same order twice.
+
+**How to apply:** Ignore client-supplied prices and identity, verify bundle/service ownership, recompute cost from owned provider services, and roll back the complete order if any item or schedule is invalid.

@@ -91,13 +91,18 @@ export const supabase: any = {
   },
   functions: {
     invoke: async (name: string, options?: { body?: unknown; headers?: Record<string, string> }) => {
-      if (name !== "user-provider-manage") return unavailable("This legacy function is unavailable.");
+      const functionPaths: Record<string, string> = {
+        "user-provider-manage": "/api/functions/user-provider-manage",
+        "process-engagement-order": "/api/functions/process-engagement-order",
+      };
+      const path = functionPaths[name];
+      if (!path) return unavailable("This legacy function is unavailable.");
       try {
         const headers = { "Content-Type": "application/json", ...(options?.headers ?? {}) };
         // Clerk authenticates this same-origin request with its session cookie.
         // The compatibility marker only satisfies old callers that expect a session.
         if (headers.Authorization === "Bearer legacy-cookie") delete headers.Authorization;
-        const response = await fetch("/api/functions/user-provider-manage", { method: "POST", headers, credentials: "same-origin", body: JSON.stringify(options?.body ?? {}) });
+        const response = await fetch(path, { method: "POST", headers, credentials: "same-origin", body: JSON.stringify(options?.body ?? {}) });
         const body = await response.json().catch(() => ({}));
         return !response.ok || body.error ? unavailable(body.error || `Provider request failed (${response.status})`) : { data: body, error: null };
       } catch (error) { return unavailable(error instanceof Error ? error.message : "Provider request failed"); }
