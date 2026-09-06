@@ -44,8 +44,8 @@ const Index = () => {
       }}
     >
       <PageMeta
-        title="Boostly Pro — Customer Portal"
-        description="Secure access to your Boostly Pro dashboard, account activity, settings, and support."
+        title="Boostly Pro — Best SMM Panel for Organic Social Growth"
+        description="AI-powered engagement for Instagram, YouTube & TikTok. Real engagement, natural delivery, safe accounts. Start free in 60 seconds."
         canonicalPath="/"
         breadcrumbs={[{ name: 'Home', path: '/' }]}
       />
@@ -105,14 +105,14 @@ const Index = () => {
           <div className="hidden md:flex items-center gap-1 text-[13.5px] font-semibold px-2 py-1.5 rounded-full"
             style={{ background: C.bg2, border:`1px solid ${C.line}`, color: C.navy }}>
             {[
-              { href:'#guide',    label:'Portal' },
-              { href:'#guide',    label:'How it works' },
-              { href:'#guide',    label:'Setup' },
+              { href:'#features', label:'Features' },
+              { href:'#how',      label:'How it works' },
+              { href:'#setup',    label:'Setup' },
               { href:'#guide',    label:'Guide' },
-              { href:'#guide',    label:'Account' },
+              { href:'#pricing',  label:'Pricing' },
               { href:'#why',      label:'Why us' },
             ].map(l => (
-              <a key={`${l.href}-${l.label}`} href={l.href} className="bp-nav-link px-3 py-1.5 rounded-full hover:text-[color:var(--tw)] transition"
+              <a key={l.href} href={l.href} className="bp-nav-link px-3 py-1.5 rounded-full hover:text-[color:var(--tw)] transition"
                 onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.color = C.blue; }}
                 onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.color = C.navy; }}>
                 {l.label}
@@ -156,14 +156,14 @@ const Index = () => {
             style={{ background: C.card, border:`1px solid ${C.line}`, boxShadow:'0 20px 40px -20px rgba(14,27,77,.25)' }}>
             <div className="flex flex-col text-[15px] font-semibold" style={{ color: C.navy }}>
               {[
-                { href:'#guide',    label:'Portal' },
-                { href:'#guide',    label:'How it works' },
+                { href:'#features', label:'Features' },
+                { href:'#how',      label:'How it works' },
                 { href:'#setup',    label:'Provider setup' },
                 { href:'#guide',    label:'How to use' },
-                { href:'#guide',    label:'Account' },
+                { href:'#pricing',  label:'Pricing' },
                 { href:'#why',      label:'Why us' },
               ].map(l => (
-                <a key={`${l.href}-${l.label}`} href={l.href} onClick={()=>setMenuOpen(false)}
+                <a key={l.href} href={l.href} onClick={()=>setMenuOpen(false)}
                   className="px-4 py-3 rounded-2xl hover:opacity-80"
                   style={{ borderBottom:`1px solid ${C.line}` }}>
                   {l.label}
@@ -186,10 +186,10 @@ const Index = () => {
           Boostly Pro
         </h1>
         <h2 className="bp-serif mt-6 text-[28px] sm:text-[44px] md:text-[54px]" style={{ color: C.ink }}>
-          Your Boostly Pro<br />Customer Portal
+          Best SMM Panel for<br />Organic Social Growth
         </h2>
         <p className="mt-6 text-[15px] sm:text-[18px]" style={{ color: C.mute }}>
-          Secure dashboard access · Account activity · Settings and support.
+          AI-powered for Instagram, YouTube &amp; TikTok · Real engagement &amp; natural delivery · Safe accounts.
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-2">
@@ -209,13 +209,13 @@ const Index = () => {
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-[13px] sm:text-[14px]"
           style={{ color: C.mute }}>
           <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" style={{color:C.blue}}/> No card needed</span>
-          <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" style={{color:C.blue}}/> Secure account access</span>
-          <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" style={{color:C.blue}}/> Clerk protected</span>
+          <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" style={{color:C.blue}}/> Every tool unlocked</span>
+          <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" style={{color:C.blue}}/> Ready in 60 seconds</span>
         </div>
       </section>
 
       {/* ═══════ FEATURES ═══════ */}
-      <section id="features" className="hidden px-4 py-16 sm:py-24" aria-hidden="true">
+      <section id="features" className="px-4 py-16 sm:py-24">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-center mb-6">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-[0.14em] uppercase px-4 py-1.5 rounded-full"
@@ -251,7 +251,7 @@ const Index = () => {
       </section>
 
       {/* ═══════ COMPARE ═══════ */}
-      <section id="why" className="hidden px-4 pb-16 sm:pb-24" aria-hidden="true">
+      <section id="why" className="px-4 pb-16 sm:pb-24">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-5">
           <div className="rounded-3xl p-8" style={{ background: C.card, border:`1px solid ${C.line}` }}>
             <div className="inline-flex items-center gap-2 mb-4">
@@ -292,7 +292,7 @@ const Index = () => {
       </section>
 
       {/* ═══════ HOW IT WORKS ═══════ */}
-      <section id="how" className="hidden px-4 py-16 sm:py-24" aria-hidden="true">
+      <section id="how" className="px-4 py-16 sm:py-24">
         <div className="max-w-6xl mx-auto">
           <h3 className="bp-serif text-center text-[30px] sm:text-[46px]" style={{ color: C.ink }}>
             Drop one link. Everything else runs on its own.
@@ -322,7 +322,7 @@ const Index = () => {
       </section>
 
       {/* ═══════ SETUP DIAGRAM — HOW TO ADD API KEY ═══════ */}
-      <section id="setup" className="hidden px-4 py-16 sm:py-24" aria-hidden="true">
+      <section id="setup" className="px-4 py-16 sm:py-24">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-center mb-6">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-[0.14em] uppercase px-4 py-1.5 rounded-full"
@@ -482,7 +482,7 @@ const Index = () => {
       </section>
 
       {/* ═══════ PROVIDER FLOW DIAGRAM ═══════ */}
-      <section id="provider-flow" className="hidden px-4 py-16 sm:py-24" aria-hidden="true">
+      <section id="provider-flow" className="px-4 py-16 sm:py-24">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-center mb-6">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-[0.14em] uppercase px-4 py-1.5 rounded-full"
@@ -623,17 +623,19 @@ const Index = () => {
             </span>
           </div>
           <h3 className="bp-serif text-center text-[30px] sm:text-[46px]" style={{ color: C.ink }}>
-            Your account, activity, and support in one place.
+            A simple guide to your first campaign.
           </h3>
           <p className="text-center mt-4 text-[14.5px]" style={{ color: C.mute }}>
-            Create an account to access the Replit-backed customer portal.
+            Follow these five steps — from sign up to live delivery. Takes about 60 seconds.
           </p>
 
           <div className="mt-10 space-y-3">
             {[
-              { t:'Create your free account', d:'Sign up securely with Clerk and land on your dashboard.' },
-              { t:'Review account activity', d:'See your wallet balance, transaction history, and existing order records.' },
-              { t:'Get support', d:'Create and track support requests directly from your account.' },
+              { t:'Create your free account',        d:'Sign up with email — no card needed. You land straight on the dashboard.' },
+              { t:'Add funds to your wallet',        d:'Open Wallet, pick UPI or crypto, top up any amount. Balance is instant.' },
+              { t:'Open Engagement Order',           d:'Go to Engagement Order, drop any Instagram, YouTube or TikTok URL.' },
+              { t:'Pick views, likes, comments & more', d:'Toggle each engagement type on and set the quantity. Preview shows exact rollout.' },
+              { t:'Place order & track live',        d:'Hit Place Order — the engine drips it out on a human pattern. Watch it grow in real-time.' },
             ].map((s,i)=>(
               <div key={i} className="flex items-start gap-4 rounded-2xl p-5"
                 style={{ background: C.card, border:`1px solid ${C.line}` }}>
@@ -651,7 +653,7 @@ const Index = () => {
             <Link to="/auth"
               className="inline-flex items-center gap-2 text-white font-bold text-[16px] px-8 py-4 rounded-full"
               style={{ background: C.blue, boxShadow: '0 18px 40px -14px rgba(29,92,255,0.55)' }}>
-              Create your account <ArrowRight className="w-4 h-4" />
+              Start your first campaign <ArrowRight className="w-4 h-4" />
             </Link>
             <div className="mt-3 text-[13px]" style={{ color: C.mute }}>
               Free to start · Ready in 60 seconds
@@ -661,7 +663,7 @@ const Index = () => {
       </section>
 
       {/* ═══════ PRICING ═══════ */}
-      <section id="pricing" className="hidden px-4 py-16 sm:py-24" aria-hidden="true">
+      <section id="pricing" className="px-4 py-16 sm:py-24">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-2 mb-3">
             <div className="h-px flex-1 max-w-[40px]" style={{ background: C.line }} />
@@ -691,7 +693,7 @@ const Index = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/sign-up" className="w-full h-11 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors" style={{ border: `1px solid ${C.ink}`, color: C.ink }}>
+              <Link to="/subscription" className="w-full h-11 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors" style={{ border: `1px solid ${C.ink}`, color: C.ink }}>
                 Get started <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -715,7 +717,7 @@ const Index = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/sign-up" className="w-full h-11 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2" style={{ background: C.blue, color: '#fff' }}>
+              <Link to="/subscription" className="w-full h-11 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2" style={{ background: C.blue, color: '#fff' }}>
                 Choose yearly <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -736,7 +738,7 @@ const Index = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/sign-up" className="w-full h-11 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2" style={{ border: `1px solid ${C.ink}`, color: C.ink }}>
+              <Link to="/subscription" className="w-full h-11 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2" style={{ border: `1px solid ${C.ink}`, color: C.ink }}>
                 Go lifetime <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -757,7 +759,7 @@ const Index = () => {
               <span className="font-extrabold text-[16px]" style={{ color: C.navy }}>Boostly Pro</span>
             </div>
             <p className="mt-4 text-[13.5px] leading-relaxed" style={{ color: C.mute }}>
-              Secure customer access to account activity, settings, and support.
+              Organic social growth for creators. Human-pattern delivery, calibrated for every platform.
             </p>
           </div>
 
@@ -765,8 +767,8 @@ const Index = () => {
             <div className="text-[11px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: C.soft }}>Product</div>
             <ul className="space-y-2 text-[14px]" style={{ color: C.navy }}>
               <li><Link to="/auth" className="hover:opacity-70">Get started</Link></li>
-              <li><a href="#guide" className="hover:opacity-70">Portal</a></li>
-              <li><a href="#guide" className="hover:opacity-70">How it works</a></li>
+              <li><a href="#features" className="hover:opacity-70">Features</a></li>
+              <li><a href="#how" className="hover:opacity-70">How it works</a></li>
             </ul>
           </div>
 
