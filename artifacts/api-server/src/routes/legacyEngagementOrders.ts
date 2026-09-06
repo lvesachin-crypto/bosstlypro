@@ -92,7 +92,7 @@ router.post("/functions/process-engagement-order", async (req, res): Promise<voi
                 s.id AS user_service_id, s.rate, s.min_quantity, s.max_quantity
          FROM lovable_legacy.user_bundle_item_providers m
          JOIN lovable_legacy.user_provider_accounts a
-           ON a.id=m.user_provider_account_id AND a.user_id=m.user_id AND a.is_active=true
+           ON a.id=m.user_provider_account_id AND a.user_id=m.user_id
          JOIN lovable_legacy.user_services s
            ON s.user_id=m.user_id
           AND s.user_provider_account_id=m.user_provider_account_id
