@@ -42,7 +42,7 @@ export default function Auth() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (userLoaded && isSignedIn) navigate("/dashboard", { replace: true });
+    if (userLoaded && isSignedIn) navigate("/engagement-order", { replace: true });
   }, [isSignedIn, userLoaded, navigate]);
 
   const clearMessages = () => {
@@ -84,7 +84,7 @@ export default function Auth() {
         if (signIn.status === "complete") {
           const { error: finalizeError } = await signIn.finalize();
           if (finalizeError) throw finalizeError;
-          navigate("/dashboard", { replace: true });
+          navigate("/engagement-order", { replace: true });
         } else {
           throw new Error(`Sign in requires another step (${signIn.status}).`);
         }
@@ -120,7 +120,7 @@ export default function Auth() {
       if (signUp.status !== "complete") throw new Error("Verification is not complete.");
       const { error: finalizeError } = await signUp.finalize();
       if (finalizeError) throw finalizeError;
-      navigate("/dashboard", { replace: true });
+      navigate("/engagement-order", { replace: true });
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -159,7 +159,7 @@ export default function Auth() {
       if (signIn.status !== "complete") throw new Error("Password reset is not complete.");
       const { error: finalizeError } = await signIn.finalize();
       if (finalizeError) throw finalizeError;
-      navigate("/dashboard", { replace: true });
+      navigate("/engagement-order", { replace: true });
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {

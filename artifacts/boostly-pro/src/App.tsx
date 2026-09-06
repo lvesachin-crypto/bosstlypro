@@ -112,6 +112,7 @@ const Wallet = lazy(() => import("./pages/CoreWallet"));
 const Settings = lazy(() => import("./pages/CoreSettings"));
 const Support = lazy(() => import("./pages/CoreSupport"));
 const Maintenance = lazy(() => import("./pages/Maintenance"));
+const EngagementOrder = lazy(() => import("./pages/EngagementOrder"));
 
 // 🔧 Maintenance mode toggle — set to false to bring the site back online
 const MAINTENANCE_MODE = false;
@@ -177,6 +178,7 @@ const AppRoutes = () => {
       <Route path="/" element={<Index />} />
       <Route path="/smm-panel-usa" element={<SmmPanelUsa />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/engagement-order" element={<EngagementOrder />} />
       <Route path="/orders" element={<Orders />} />
       <Route path="/wallet" element={<Wallet />} />
       <Route path="/settings" element={<Settings />} />

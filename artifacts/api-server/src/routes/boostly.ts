@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import {
   db,
+  pool,
   ordersTable,
   profilesTable,
   servicesTable,
@@ -22,25 +23,50 @@ function userId(req: AuthenticatedRequest): string {
 }
 
 /** JIT provisioning replaces the former Supabase auth.users trigger. */
-async function ensureAccount(id: string): Promise<void> {
+async function ensureAccount(id: string): Promise<string | null> {
   const clerkUser = await clerkClient.users.getUser(id);
   const email =
     clerkUser.emailAddresses.find((address) => address.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
     clerkUser.emailAddresses[0]?.emailAddress ??
     `${id}@clerk.local`;
+  const legacyId = clerkUser.externalId ?? null;
+  const legacy = legacyId
+    ? await pool.query<{
+        full_name: string | null;
+        currency: string | null;
+        balance: string | null;
+        total_deposited: string | null;
+        total_spent: string | null;
+        role: "admin" | "moderator" | "user" | null;
+      }>(
+        `SELECT p.full_name, p.currency, w.balance, w.total_deposited, w.total_spent, r.role::text AS role
+           FROM lovable_legacy.profiles p
+           LEFT JOIN lovable_legacy.wallets w ON w.user_id = p.user_id
+           LEFT JOIN lovable_legacy.user_roles r ON r.user_id = p.user_id
+          WHERE p.user_id = $1::uuid
+          LIMIT 1`,
+        [legacyId],
+      )
+    : { rows: [] };
+  const old = legacy.rows[0];
   await db.transaction(async (tx) => {
     const [profile] = await tx.select({ id: profilesTable.id }).from(profilesTable).where(eq(profilesTable.userId, id)).limit(1);
     if (!profile) {
-      await tx.insert(profilesTable).values({ userId: id, email, fullName: clerkUser.fullName }).onConflictDoNothing();
-      await tx.insert(walletsTable).values({ userId: id }).onConflictDoNothing();
-      await tx.insert(userRolesTable).values({ userId: id }).onConflictDoNothing();
+      await tx.insert(profilesTable).values({ userId: id, email, fullName: old?.full_name ?? clerkUser.fullName, currency: old?.currency ?? "USD" }).onConflictDoNothing();
+      await tx.insert(walletsTable).values({ userId: id, balance: old?.balance ?? "0", totalDeposited: old?.total_deposited ?? "0", totalSpent: old?.total_spent ?? "0" }).onConflictDoNothing();
+      await tx.insert(userRolesTable).values({ userId: id, role: old?.role ?? "user" }).onConflictDoNothing();
+    } else if (old) {
+      await tx.update(profilesTable).set({ email, fullName: old.full_name ?? clerkUser.fullName, currency: old.currency ?? "USD" }).where(eq(profilesTable.userId, id));
+      await tx.update(walletsTable).set({ balance: old.balance ?? "0", totalDeposited: old.total_deposited ?? "0", totalSpent: old.total_spent ?? "0" }).where(eq(walletsTable.userId, id));
+      await tx.update(userRolesTable).set({ role: old.role ?? "user" }).where(eq(userRolesTable.userId, id));
     }
   });
+  return legacyId;
 }
 
 router.get("/dashboard", async (req, res): Promise<void> => {
   const id = userId(req as AuthenticatedRequest);
-  await ensureAccount(id);
+  const legacyId = await ensureAccount(id);
   const [[profile], [wallet], [role], recentOrders, services] = await Promise.all([
     db.select().from(profilesTable).where(eq(profilesTable.userId, id)).limit(1),
     db.select().from(walletsTable).where(eq(walletsTable.userId, id)).limit(1),
@@ -48,7 +74,40 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     db.select().from(ordersTable).where(eq(ordersTable.userId, id)).orderBy(desc(ordersTable.createdAt)).limit(5),
     db.select({ count: servicesTable.id }).from(servicesTable).where(eq(servicesTable.isActive, true)),
   ]);
-  res.json({ profile, wallet, role: role?.role ?? "user", recentOrders, activeServices: services.length });
+  const [engagementOrders, legacyStats] = legacyId
+    ? await Promise.all([
+        pool.query(
+          `SELECT o.id, o.order_number, o.status, o.total_price, o.link, o.created_at, o.base_quantity,
+                  COALESCE(json_agg(json_build_object('engagement_type', i.engagement_type, 'quantity', i.quantity, 'status', i.status))
+                    FILTER (WHERE i.id IS NOT NULL), '[]') AS items
+             FROM lovable_legacy.engagement_orders o
+             LEFT JOIN lovable_legacy.engagement_order_items i ON i.order_id = o.id
+            WHERE o.user_id = $1::uuid
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+            LIMIT 5`,
+          [legacyId],
+        ),
+        pool.query(
+          `SELECT count(*)::int AS total_orders,
+                  count(*) FILTER (WHERE status = 'completed')::int AS completed_orders,
+                  count(*) FILTER (WHERE status IN ('processing','pending'))::int AS active_orders,
+                  COALESCE(sum(total_price), 0)::text AS total_spent
+             FROM lovable_legacy.engagement_orders
+            WHERE user_id = $1::uuid`,
+          [legacyId],
+        ),
+      ])
+    : [{ rows: [] }, { rows: [{ total_orders: 0, completed_orders: 0, active_orders: 0, total_spent: "0" }] }];
+  res.json({
+    profile,
+    wallet,
+    role: role?.role ?? "user",
+    recentOrders,
+    engagementOrders: engagementOrders.rows,
+    stats: legacyStats.rows[0],
+    activeServices: services.length,
+  });
 });
 
 router.get("/admin/status", async (req, res): Promise<void> => {
