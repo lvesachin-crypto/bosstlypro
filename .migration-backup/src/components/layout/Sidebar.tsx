@@ -39,6 +39,7 @@ const providerItems = [
 ];
 
 const adminNavItems = [{ icon: Shield, label: 'Admin Panel', path: '/admin' }];
+const appBasePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export function Sidebar({ onClose }: SidebarProps) {
   const location = useLocation();
@@ -74,10 +75,10 @@ export function Sidebar({ onClose }: SidebarProps) {
     const isActive = location.pathname === item.path
       || (item.path !== '/dashboard' && location.pathname.startsWith(item.path + '/'));
     return (
-      <Link
+      <a
         key={item.path}
-        to={item.path}
-        onClick={onClose}
+        href={`${appBasePath}${item.path}`}
+        onClick={() => onClose?.()}
         className="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] font-semibold mb-1 transition-all"
         style={
           isActive
@@ -101,7 +102,7 @@ export function Sidebar({ onClose }: SidebarProps) {
             }
           >{item.tag}</span>
         )}
-      </Link>
+      </a>
     );
   };
 
