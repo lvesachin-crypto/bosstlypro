@@ -18,6 +18,17 @@ const tables = new Set([
   "user_provider_accounts", "user_provider_accounts_safe", "user_roles", "user_services", "wallets",
 ]);
 const publicTables = new Set(["subscription_plans", "services", "popup_ads"]);
+// These tables back end-user screens and must always remain tenant-scoped.
+// Administrative cross-user access belongs in dedicated audited admin routes,
+// never in this generic compatibility reader.
+const alwaysOwnerScopedTables = new Set([
+  "user_provider_accounts",
+  "user_provider_accounts_safe",
+  "user_services",
+  "user_bundles",
+  "user_bundle_items",
+  "user_bundle_item_providers",
+]);
 const identifier = /^[a-z_][a-z0-9_]*$/;
 const forbiddenFields = new Set(["api_key", "encrypted_api_key", "api_key_encrypted", "api_key_ciphertext"]);
 
@@ -140,7 +151,7 @@ router.post("/legacy/query", async (req, res): Promise<void> => {
       return;
     }
     const scoped = !publicTables.has(query.table);
-    if (scoped && !user.isAdmin) {
+    if (scoped && (!user.isAdmin || alwaysOwnerScopedTables.has(query.table))) {
       // All non-public legacy tables are private. The mandatory owner predicate
       // cannot be widened or overridden by a caller-supplied user_id filter.
       query.filters = query.filters.filter((filter) => filter.column !== "user_id");
