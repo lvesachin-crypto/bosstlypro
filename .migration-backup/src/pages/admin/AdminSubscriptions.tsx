@@ -466,7 +466,7 @@ export default function AdminSubscriptions() {
                       <SelectItem value="yearly">
                         <span className="flex items-center gap-2">
                           <Zap className="h-4 w-4 text-emerald-500" />
-                          Yearly ($99 / 365 days)
+                          Yearly ($199 / 365 days)
                         </span>
                       </SelectItem>
                       <SelectItem value="lifetime">
@@ -720,7 +720,7 @@ export default function AdminSubscriptions() {
                   <p className="font-medium">{selectedRequest.full_name}</p>
                   <p className="text-sm text-muted-foreground">{selectedRequest.email}</p>
                   <Badge className="mt-2">
-                    {selectedRequest.plan_type === 'lifetime' ? '$99 Lifetime' : '$10/month'}
+                    {selectedRequest.plan_type === 'lifetime' ? '$399 Lifetime' : '$10/month'}
                   </Badge>
                 </div>
                 <div className="space-y-2">

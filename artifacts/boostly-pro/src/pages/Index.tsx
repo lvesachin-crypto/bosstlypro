@@ -705,10 +705,10 @@ const Index = () => {
               </div>
               <div className="text-[11px] font-bold uppercase tracking-[0.15em] mb-4" style={{ color: '#8FB0FF' }}>Yearly</div>
               <div className="flex items-baseline gap-1.5 mb-1">
-                <span className="text-5xl font-black tracking-tight" style={{ fontFamily: "'Fraunces', serif" }}>$99</span>
+                <span className="text-5xl font-black tracking-tight" style={{ fontFamily: "'Fraunces', serif" }}>$199</span>
                 <span className="text-sm font-medium" style={{ color: '#8FB0FF' }}>/ year</span>
               </div>
-              <p className="text-sm mb-6" style={{ color: '#B8C7EE' }}>Save 79% vs monthly. Best value.</p>
+              <p className="text-sm mb-6" style={{ color: '#B8C7EE' }}>Save 57% vs monthly. Best value.</p>
               <ul className="space-y-2.5 mb-8 text-sm flex-1" style={{ color: '#D6DEF5' }}>
                 {['Everything in Monthly','Priority support','Advanced AI insights','Early feature access'].map(f => (
                   <li key={f} className="flex items-start gap-2">
@@ -726,7 +726,7 @@ const Index = () => {
             <div className="rounded-2xl p-7 flex flex-col" style={{ background: C.card, border: `1px solid ${C.line}` }}>
               <div className="text-[11px] font-bold uppercase tracking-[0.15em] mb-4" style={{ color: C.blue }}>Lifetime</div>
               <div className="flex items-baseline gap-1.5 mb-1">
-                <span className="text-5xl font-black tracking-tight" style={{ fontFamily: "'Fraunces', serif", color: C.ink }}>$199</span>
+                <span className="text-5xl font-black tracking-tight" style={{ fontFamily: "'Fraunces', serif", color: C.ink }}>$399</span>
                 <span className="text-sm font-medium" style={{ color: C.soft }}>/ once</span>
               </div>
               <p className="text-sm mb-6" style={{ color: C.mute }}>Pay once, use forever.</p>
