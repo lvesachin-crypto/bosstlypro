@@ -17,11 +17,12 @@ const signupSchema = loginSchema.extend({
   fullName: z.string().trim().min(2, "Name must be at least 2 characters"),
 });
 
-type AuthMode = "login" | "signup" | "verify" | "forgot" | "reset";
+type AuthMode = "login" | "signup" | "verify" | "mfa" | "forgot" | "reset";
 
 function errorMessage(error: unknown) {
-  const clerkError = error as { errors?: Array<{ longMessage?: string; message?: string }> };
-  return clerkError.errors?.[0]?.longMessage || clerkError.errors?.[0]?.message || "Something went wrong. Please try again.";
+  if (error instanceof Error) return error.message;
+  const clerkError = error as { longMessage?: string; message?: string; errors?: Array<{ longMessage?: string; message?: string }> };
+  return clerkError.longMessage || clerkError.message || clerkError.errors?.[0]?.longMessage || clerkError.errors?.[0]?.message || "Something went wrong. Please try again.";
 }
 
 export default function Auth() {
@@ -66,10 +67,18 @@ export default function Auth() {
         const values = loginSchema.parse({ email, password });
         const { error: signInError } = await signIn.password({ identifier: values.email, password: values.password });
         if (signInError) throw signInError;
-        if (signIn.status !== "complete") throw new Error("Sign in requires another verification step.");
-        const { error: finalizeError } = await signIn.finalize();
-        if (finalizeError) throw finalizeError;
-        navigate("/dashboard", { replace: true });
+        if (signIn.status === "complete") {
+          const { error: finalizeError } = await signIn.finalize();
+          if (finalizeError) throw finalizeError;
+          navigate("/dashboard", { replace: true });
+        } else if (signIn.status === "needs_second_factor" || signIn.status === "needs_client_trust") {
+          const { error: sendCodeError } = await signIn.mfa.sendEmailCode();
+          if (sendCodeError) throw sendCodeError;
+          setCode("");
+          setMode("mfa");
+        } else {
+          throw new Error(`Sign in requires another step (${signIn.status}).`);
+        }
       } else {
         const values = signupSchema.parse({ email, password, fullName });
         const names = values.fullName.trim().split(/\s+/);
@@ -101,6 +110,24 @@ export default function Auth() {
       if (verifyError) throw verifyError;
       if (signUp.status !== "complete") throw new Error("Verification is not complete.");
       const { error: finalizeError } = await signUp.finalize();
+      if (finalizeError) throw finalizeError;
+      navigate("/dashboard", { replace: true });
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleMfa = async (event: React.FormEvent) => {
+    event.preventDefault();
+    clearMessages();
+    setIsSubmitting(true);
+    try {
+      const { error: verifyError } = await signIn.mfa.verifyEmailCode({ code: code.trim() });
+      if (verifyError) throw verifyError;
+      if (signIn.status !== "complete") throw new Error(`Verification requires another step (${signIn.status}).`);
+      const { error: finalizeError } = await signIn.finalize();
       if (finalizeError) throw finalizeError;
       navigate("/dashboard", { replace: true });
     } catch (cause) {
@@ -152,9 +179,9 @@ export default function Auth() {
   const inputClass =
     "h-12 rounded-xl border-[#dbe4f5] bg-white px-4 font-medium text-[#0B1220] placeholder:text-[#8892AB] transition-all focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20";
   const isLogin = mode === "login";
-  const title = mode === "verify" ? "Check your inbox" : mode === "forgot" || mode === "reset" ? "Reset password" : isLogin ? "Welcome back" : "Create account";
+  const title = mode === "verify" ? "Check your inbox" : mode === "mfa" ? "Verify it's you" : mode === "forgot" || mode === "reset" ? "Reset password" : isLogin ? "Welcome back" : "Create account";
   const subtitle =
-    mode === "verify"
+    mode === "verify" || mode === "mfa"
       ? `Verification code sent to ${email}`
       : mode === "forgot"
         ? "Enter your email to receive a reset code."
@@ -183,13 +210,13 @@ export default function Auth() {
         <h1 className="mb-1 text-2xl font-extrabold tracking-tight text-[#111827]" style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>{title}</h1>
         <p className="mb-8 text-[14px] text-[#888]">{subtitle}</p>
 
-        {mode === "verify" ? (
-          <form onSubmit={handleVerify} className="space-y-4">
+        {mode === "verify" || mode === "mfa" ? (
+          <form onSubmit={mode === "mfa" ? handleMfa : handleVerify} className="space-y-4">
             <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EAF1FF]"><Mail className="h-6 w-6 text-[#2563EB]" /></div>
             <Field label="Verification code"><Input inputMode="numeric" autoComplete="one-time-code" placeholder="Enter 6-digit code" value={code} onChange={(e) => setCode(e.target.value)} className={inputClass} /></Field>
             <Messages error={error} success={successMessage} />
-            <SubmitButton loading={isSubmitting}>Verify email</SubmitButton>
-            <BackButton onClick={() => switchMode("signup")} />
+            <SubmitButton loading={isSubmitting}>{mode === "mfa" ? "Continue" : "Verify email"}</SubmitButton>
+            <BackButton onClick={() => switchMode(mode === "mfa" ? "login" : "signup")} />
           </form>
         ) : mode === "forgot" ? (
           <form onSubmit={handleForgot} className="space-y-4">
