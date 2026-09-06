@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router(); router.use(requireAuth);
-const schema = z.object({ table: z.enum(["user_provider_accounts", "user_services", "user_bundles", "user_bundle_items", "user_bundle_item_providers", "subscriptions", "subscription_requests"]), action: z.enum(["insert", "update", "delete", "upsert"]), values: z.any().optional(), filters: z.array(z.object({ column: z.string(), value: z.any() })).default([]) });
+const schema = z.object({ table: z.enum(["user_provider_accounts", "user_services", "user_bundles", "user_bundle_items", "user_bundle_item_providers", "subscriptions", "subscription_requests", "engagement_orders", "engagement_order_items", "organic_run_schedule"]), action: z.enum(["insert", "update", "delete", "upsert"]), values: z.any().optional(), filters: z.array(z.object({ operator: z.enum(["eq", "neq", "in", "is", "notIn", "lt"]).optional(), column: z.string(), value: z.any() })).default([]) });
 const columns: Record<string, string[]> = {
   user_provider_accounts: [], user_services: ["name", "category", "type", "rate", "min_quantity", "max_quantity", "refill", "cancel_allowed", "is_active"],
   user_bundles: ["name", "description", "platform"], user_bundle_items: ["engagement_type", "quantity"],
@@ -178,6 +178,84 @@ router.post("/legacy/mutate", async (req, res): Promise<void> => {
         return;
       }
     const uid = await user(req as AuthenticatedRequest); const values = parsed.data.values ?? {};
+    if (table === "engagement_orders") {
+      const id = uuid.parse(filters.find((filter) => filter.column === "id" && filter.operator === "eq")?.value);
+      const status = z.enum(["paused", "processing", "cancelled", "partial", "failed"]).parse(
+        typeof values === "object" && values !== null ? (values as Record<string, unknown>).status : undefined,
+      );
+      if (action !== "update") {
+        res.status(400).json({ error: "Only order status updates are supported." });
+        return;
+      }
+      const result = await pool.query(
+        "UPDATE lovable_legacy.engagement_orders SET status=$1, updated_at=now() WHERE id=$2::uuid AND user_id=$3::uuid RETURNING *",
+        [status, id, uid],
+      );
+      res.json({ data: result.rows, error: null });
+      return;
+    }
+    if (table === "engagement_order_items") {
+      if (action !== "update") {
+        res.status(400).json({ error: "Only item status updates are supported." });
+        return;
+      }
+      const status = z.enum(["paused", "processing", "cancelled"]).parse(
+        typeof values === "object" && values !== null ? (values as Record<string, unknown>).status : undefined,
+      );
+      const idFilter = filters.find((filter) => filter.column === "id" && filter.operator === "eq");
+      const orderFilter = filters.find((filter) => filter.column === "engagement_order_id" && filter.operator === "eq");
+      if (!idFilter && !orderFilter) throw new Error("An item or order id is required.");
+      const targetId = uuid.parse((idFilter ?? orderFilter)?.value);
+      const result = await pool.query(
+        `UPDATE lovable_legacy.engagement_order_items item
+         SET status=$1, updated_at=now()
+         FROM lovable_legacy.engagement_orders orders
+         WHERE item.engagement_order_id=orders.id
+           AND orders.user_id=$2::uuid
+           AND ${idFilter ? "item.id" : "item.engagement_order_id"}=$3::uuid
+           AND item.status NOT IN ('completed','cancelled','failed')
+         RETURNING item.*`,
+        [status, uid, targetId],
+      );
+      res.json({ data: result.rows, error: null });
+      return;
+    }
+    if (table === "organic_run_schedule") {
+      const idFilter = filters.find((filter) => filter.column === "id" && filter.operator === "in");
+      if (action !== "update") {
+        res.status(400).json({ error: "Only run status updates are supported." });
+        return;
+      }
+      const requestedStatus = typeof values === "object" && values !== null && "status" in values
+        ? (values as Record<string, unknown>).status
+        : undefined;
+      if (requestedStatus !== "pending" && requestedStatus !== "cancelled") throw new Error("Unsupported run status.");
+      const ids = idFilter ? z.array(uuid).min(1).max(500).parse(idFilter.value) : null;
+      const itemId = !ids
+        ? uuid.parse(filters.find((filter) => filter.column === "engagement_order_item_id" && filter.operator === "eq")?.value)
+        : null;
+      const before = filters.find((filter) => filter.column === "scheduled_at" && filter.operator === "lt")?.value;
+      const beforeTimestamp = before === undefined ? null : timestamp.parse(before);
+      const result = await pool.query(
+        `UPDATE lovable_legacy.organic_run_schedule run
+         SET status=$1, error_message=${requestedStatus === "pending" ? "NULL" : "'Cancelled by user'"},
+             provider_order_id=${requestedStatus === "pending" ? "NULL" : "provider_order_id"},
+             provider_response=NULL, provider_status=NULL, started_at=NULL,
+             completed_at=${requestedStatus === "pending" ? "NULL" : "now()"},
+             retry_count=${requestedStatus === "pending" ? "0" : "retry_count"}, updated_at=now()
+         FROM lovable_legacy.engagement_order_items item
+         JOIN lovable_legacy.engagement_orders orders ON orders.id=item.engagement_order_id
+         WHERE run.engagement_order_item_id=item.id
+           AND orders.user_id=$2::uuid
+           AND (${ids ? "run.id=ANY($3::uuid[])" : "run.engagement_order_item_id=$3::uuid"})
+           AND run.status ${requestedStatus === "pending" ? "='failed'" : "IN ('pending','failed','started')"}
+           AND ($4::timestamptz IS NULL OR run.scheduled_at < $4::timestamptz)
+         RETURNING run.*`,
+        [requestedStatus, uid, ids ?? itemId, beforeTimestamp],
+      );
+      res.json({ data: result.rows, error: null });
+      return;
+    }
     const allowed = columns[table]; const data = Object.fromEntries(Object.entries(values).filter(([k]) => allowed.includes(k)));
     const id = uuidFilter(filters);
     if (table === "user_provider_accounts") {

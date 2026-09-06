@@ -3,7 +3,7 @@
  * It intentionally exposes no browser database credentials. The small write
  * surface below is restricted server-side to the restored provider/bundle flow.
  */
-type Filter = { operator: "eq" | "neq" | "in" | "is"; column: string; value: unknown };
+type Filter = { operator: "eq" | "neq" | "in" | "is" | "notIn" | "lt"; column: string; value: unknown };
 type Result = { data: any; error: Error | null };
 
 const unavailable = (message = "This legacy data operation is unavailable through the current API."): Result => ({
@@ -26,6 +26,11 @@ class LegacyQuery implements PromiseLike<Result> {
   neq(column: string, value: unknown): this { this.filters.push({ operator: "neq", column, value }); return this; }
   in(column: string, value: unknown[]): this { this.filters.push({ operator: "in", column, value }); return this; }
   is(column: string, value: unknown): this { this.filters.push({ operator: "is", column, value }); return this; }
+  not(column: string, operator: string, value: unknown): this {
+    if (operator === "in") this.filters.push({ operator: "notIn", column, value });
+    return this;
+  }
+  lt(column: string, value: unknown): this { this.filters.push({ operator: "lt", column, value }); return this; }
   order(column: string, options?: { ascending?: boolean }): this {
     this.sort = { column, ascending: options?.ascending !== false }; return this;
   }
