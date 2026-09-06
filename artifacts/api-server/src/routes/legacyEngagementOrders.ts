@@ -67,7 +67,7 @@ router.post("/functions/process-engagement-order", async (req, res): Promise<voi
     const prepared: Array<{
       engagement: z.infer<typeof engagementSchema>;
       bundleItemId: string;
-      userServiceId: string;
+      userServiceId: string | null;
       providerAccountId: string;
       mappings: Array<{ user_provider_account_id: string; provider_service_id: string; priority: number }>;
       price: number;
@@ -93,7 +93,7 @@ router.post("/functions/process-engagement-order", async (req, res): Promise<voi
          FROM lovable_legacy.user_bundle_item_providers m
          JOIN lovable_legacy.user_provider_accounts a
            ON a.id=m.user_provider_account_id AND a.user_id=m.user_id
-         JOIN lovable_legacy.user_services s
+         LEFT JOIN lovable_legacy.user_services s
            ON s.user_id=m.user_id
           AND s.user_provider_account_id=m.user_provider_account_id
           AND s.provider_service_id=m.provider_service_id
@@ -112,11 +112,18 @@ router.post("/functions/process-engagement-order", async (req, res): Promise<voi
       );
       if (!matched.length) throw new Error(`${engagement.type} has no active provider mapping.`);
 
-      const cheapest = matched.reduce((best, row) =>
-        Number(row.rate) > 0 && (Number(best.rate) <= 0 || Number(row.rate) < Number(best.rate)) ? row : best,
+      const services = matched.filter((row) => row.user_service_id);
+      const pricedServices = services.filter((row) => Number(row.rate) > 0);
+      const cheapest = (pricedServices.length ? pricedServices : services).reduce(
+        (best, row) => !best || Number(row.rate || 0) < Number(best.rate || 0) ? row : best,
+        null,
       );
-      const providerMin = Math.min(...matched.map((row) => Number(row.min_quantity) || 1));
-      const providerMax = Math.max(...matched.map((row) => Number(row.max_quantity) || 0));
+      const providerMin = services.length
+        ? Math.min(...services.map((row) => Number(row.min_quantity) || 1))
+        : 1;
+      const providerMax = services.length
+        ? Math.max(...services.map((row) => Number(row.max_quantity) || 0))
+        : 0;
       const runs = engagement.scheduled_runs?.length
         ? engagement.scheduled_runs
         : [{
@@ -137,12 +144,12 @@ router.post("/functions/process-engagement-order", async (req, res): Promise<voi
         throw new Error(`${engagement.type} has a run above provider maximum ${providerMax}.`);
       }
 
-      const price = Math.round((engagement.quantity / 1000) * Number(cheapest.rate || 0) * 10_000) / 10_000;
+      const price = Math.round((engagement.quantity / 1000) * Number(cheapest?.rate || 0) * 10_000) / 10_000;
       totalPrice += price;
       prepared.push({
         engagement: { ...engagement, scheduled_runs: runs },
         bundleItemId: bundleItem.rows[0].id,
-        userServiceId: cheapest.user_service_id,
+        userServiceId: cheapest?.user_service_id ?? engagement.user_service_id ?? null,
         providerAccountId: matched[0].user_provider_account_id,
         mappings: matched.map((row) => ({
           user_provider_account_id: row.user_provider_account_id,
