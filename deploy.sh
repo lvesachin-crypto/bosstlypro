@@ -9,7 +9,7 @@
 set -euo pipefail
 
 # ---------- SETTINGS (yahan apni details daalo) ----------
-REPO_URL="${REPO_URL:-https://github.com/xbhishekh/organicsmm.git}"
+REPO_URL="${REPO_URL:-https://github.com/lvesachin-crypto/bosstlypro.git}"
 DOMAIN="${DOMAIN:-boostbotting.site}"
 EMAIL="${EMAIL:-admin@boostbotting.site}"
 APP_DIR="/var/www/boostly"

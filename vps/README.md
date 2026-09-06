@@ -22,7 +22,7 @@ scp -r ./backup root@91.188.254.184:/root/backup
 ## Step 2 — Backend + Database
 ```bash
 ssh root@91.188.254.184
-git clone https://<GITHUB_TOKEN>@github.com/lvesachin-crypto/soss-organic-hub.git /var/www/boostly
+git clone https://github.com/lvesachin-crypto/bosstlypro.git /var/www/boostly
 cd /var/www/boostly
 nano vps/selfhost-backend.sh     # set DOMAIN, API_DOMAIN, EMAIL, GIT_REPO
 bash vps/selfhost-backend.sh
