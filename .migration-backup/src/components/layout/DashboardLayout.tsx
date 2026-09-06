@@ -22,8 +22,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <Sidebar />
       </aside>
       <MobileBottomNav />
-      <main className="md:pl-[260px] w-full">
-        <div className="min-h-screen pt-16 md:pt-0 px-3 sm:px-4 py-4 sm:py-5 lg:p-8">
+      <main className="md:pl-[260px] w-full min-w-0">
+        <div className="min-h-screen pt-16 md:pt-0 px-3 sm:px-4 py-4 sm:py-5 lg:p-8 min-w-0">
           <div className="max-w-7xl mx-auto w-full">{children}</div>
         </div>
       </main>
