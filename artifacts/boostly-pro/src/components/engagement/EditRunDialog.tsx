@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { Pencil, Save, X, Loader2, Hash, Wallet, AlertTriangle } from "lucide-react";
+import { Pencil, Save, X, Loader2, Hash, Wallet, AlertTriangle, CalendarClock } from "lucide-react";
 import { DateTimePicker } from "./DateTimePicker";
 
 interface EditRunDialogProps {
@@ -164,8 +164,8 @@ export function EditRunDialog({
 
             {/* Time Input */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                📅 Scheduled Time
+              <Label className="flex items-center gap-1.5 text-muted-foreground">
+                <CalendarClock className="h-4 w-4" /> Scheduled Time
               </Label>
               <DateTimePicker
                 value={scheduledDate}
@@ -184,9 +184,10 @@ export function EditRunDialog({
 
             {/* Warning */}
             {hasChanges && !hasInsufficientBalance && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg text-sm">
-                <p className="text-amber-700">
-                  ⚠️ Variance will be reset to 0 when manually editing
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-amber-600 font-medium">
+                  Variance will be reset to 0 when manually editing
                 </p>
               </div>
             )}

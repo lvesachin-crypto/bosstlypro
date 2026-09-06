@@ -27,7 +27,8 @@ import {
   BarChart3,
   Ban,
   Pause,
-  PlayCircle
+  PlayCircle,
+  Timer
 } from "lucide-react";
 import { PageMeta } from "@/components/seo/PageMeta";
 import {
@@ -51,11 +52,11 @@ import { EditRunDialog } from "@/components/engagement/EditRunDialog";
 import { OrderProgressChart } from "@/components/engagement/OrderProgressChart";
 
 const ENGAGEMENT_ICONS = {
-  views: { icon: Eye, label: "Views", emoji: "👁️" },
-  likes: { icon: Heart, label: "Likes", emoji: "❤️" },
-  comments: { icon: MessageCircle, label: "Comments", emoji: "💬" },
-  saves: { icon: Bookmark, label: "Saves", emoji: "📥" },
-  shares: { icon: Share2, label: "Shares", emoji: "🔄" },
+  views: { icon: Eye, label: "Views" },
+  likes: { icon: Heart, label: "Likes" },
+  comments: { icon: MessageCircle, label: "Comments" },
+  saves: { icon: Bookmark, label: "Saves" },
+  shares: { icon: Share2, label: "Shares" },
 };
 
 const STATUS_CONFIG = {
@@ -205,7 +206,7 @@ export default function EngagementOrderDetail() {
         throw new Error('No failed runs to retry');
       }
       
-      console.log(`🔄 Retrying ${failedRunIds.length} failed runs...`);
+      console.log(`Retrying ${failedRunIds.length} failed runs...`);
       
       // Reset all failed runs to pending and clear error messages
       const { error } = await supabase
@@ -228,7 +229,7 @@ export default function EngagementOrderDetail() {
     },
     onSuccess: async (data) => {
       toast({
-        title: "🔄 Retrying Failed Runs",
+        title: "Retrying Failed Runs",
         description: `${data.count} runs reset to pending - will execute with new API keys!`,
       });
       
@@ -237,7 +238,7 @@ export default function EngagementOrderDetail() {
       
       // Trigger immediate execution
       setTimeout(async () => {
-        console.log('⚡ Triggering execution for retried runs...');
+        console.log('Triggering execution for retried runs...');
         await supabase.functions.invoke('execute-all-runs', {
           body: { instant: true }
         });
@@ -293,7 +294,7 @@ export default function EngagementOrderDetail() {
       }
     },
     onSuccess: () => {
-      toast({ title: "🚫 Order Cancelled", description: "Order and all queued/active runs have been permanently cancelled." });
+      toast({ title: "Order Cancelled", description: "Order and all queued/active runs have been permanently cancelled." });
       refetch();
     },
     onError: (error: Error) => {
@@ -459,7 +460,7 @@ export default function EngagementOrderDetail() {
       }
     },
     onSuccess: () => {
-      toast({ title: "🚫 Type Cancelled", description: "All pending runs for this type have been permanently cancelled." });
+      toast({ title: "Type Cancelled", description: "All pending runs for this type have been permanently cancelled." });
       refetch();
     },
     onError: (error: Error) => {
@@ -517,7 +518,7 @@ export default function EngagementOrderDetail() {
       const extraCharged = Number(data?.result?.extra_charged || 0);
 
       toast({
-        title: "✅ Run Updated",
+        title: "Run Updated",
         description: extraCharged > 0
           ? `Schedule updated. ${formatPrice(extraCharged)} charged from wallet.`
           : "Schedule updated successfully.",
@@ -728,8 +729,9 @@ export default function EngagementOrderDetail() {
                 {effectiveStatus}
               </Badge>
               {order.is_organic_mode && (
-                <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30">
-                  🌱 Organic
+                <Badge variant="secondary" className="font-medium">
+                  <Play className="h-3 w-3 mr-1" />
+                  Organic
                 </Badge>
               )}
               <Badge variant="outline" className="text-muted-foreground border-border text-xs">
@@ -740,10 +742,10 @@ export default function EngagementOrderDetail() {
               href={order.link} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mt-1 transition-colors break-all"
+              className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 mt-1 transition-colors break-all"
             >
-              🔗 {order.link.length > 40 ? order.link.slice(0, 40) + '...' : order.link}
-              <ExternalLink className="h-3 w-3 shrink-0" />
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              {order.link.length > 40 ? order.link.slice(0, 40) + '...' : order.link}
             </a>
           </div>
           <div className="text-right hidden md:block shrink-0">
@@ -852,12 +854,12 @@ export default function EngagementOrderDetail() {
         />
 
         {/* SECTION 1: Merged Organic Timeline */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            📋 Run Schedule 
-            <Badge variant="outline">{stats.allRuns.length} total runs</Badge>
+            <Timer className="h-5 w-5 text-muted-foreground" />
+            Run Schedule 
           </h2>
-        <MergedTimeline
+          <MergedTimeline
             runs={stats.allRuns}
             onEditRun={handleEditRun}
             nextRun={stats.nextRun}
@@ -869,10 +871,8 @@ export default function EngagementOrderDetail() {
         {/* SECTION 2: Per-Service History Cards */}
         <div className="space-y-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-primary" /> Per-Service History
-            <span className="text-sm font-normal text-muted-foreground">
-              (Edit from here or merged timeline - both sync automatically)
-            </span>
+            <BarChart3 className="h-5 w-5 text-muted-foreground" /> 
+            Per-Service History
           </h2>
           
           {/* Sort items by engagement type priority: Views → Likes → Comments → Reposts → Shares → Saves */}
@@ -933,65 +933,69 @@ export default function EngagementOrderDetail() {
         </div>
 
         {/* Order Info */}
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle className="text-foreground">Order Details</CardTitle>
+        <Card className="rounded-xl border border-border bg-card shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
+            <CardTitle className="text-foreground font-semibold">Order Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <CardContent className="space-y-6 pt-5">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
               <div>
-                <p className="text-muted-foreground">Created</p>
+                <p className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">Created</p>
                 <p className="font-medium text-foreground">{format(new Date(order.created_at), 'MMM d, yyyy HH:mm')}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Total Price</p>
-                <p className="font-medium text-lg text-foreground">{formatPrice(order.total_price || 0)}</p>
+                <p className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">Total Price</p>
+                <p className="font-bold text-foreground tabular-nums">{formatPrice(order.total_price || 0)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Variance</p>
+                <p className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">Variance</p>
                 <p className="font-medium text-foreground">±{order.variance_percent}%</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Peak Hours</p>
-                <p className="font-medium text-foreground">{order.peak_hours_enabled ? '🔥 Enabled' : 'Disabled'}</p>
+                <p className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">Peak Hours</p>
+                <p className="font-medium text-foreground flex items-center gap-1.5">
+                  {order.peak_hours_enabled ? (
+                    <><CheckCircle2 className="h-3.5 w-3.5 text-primary" /> Enabled</>
+                  ) : 'Disabled'}
+                </p>
               </div>
             </div>
 
             {/* Detection Risk Level */}
             {order.is_organic_mode && order.variance_percent && (
-              <div className="rounded-xl border border-border bg-secondary/50 p-4 space-y-3">
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-foreground">Detection Risk Level</span>
-                  <Badge className={
+                  <span className="text-sm font-semibold text-foreground">Detection Risk Level</span>
+                  <Badge variant="outline" className={
                     order.variance_percent <= 15 
-                      ? "bg-red-500/20 text-red-400 border border-red-500/30" 
+                      ? "border-destructive/40 text-destructive bg-destructive/10" 
                       : order.variance_percent <= 25 
-                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" 
+                        ? "border-amber-500/40 text-amber-600 bg-amber-500/10" 
                         : order.variance_percent <= 35
-                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                          : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          ? "border-primary/40 text-primary bg-primary/10"
+                          : "border-primary/40 text-primary bg-primary/10"
                   }>
                     {order.variance_percent <= 15 
-                      ? "⚠ Very High" 
+                      ? "High Risk" 
                       : order.variance_percent <= 25 
-                        ? "⚠ Medium" 
+                        ? "Medium Risk" 
                         : order.variance_percent <= 35
-                          ? "✓ Low"
-                          : "✓ Very Low"}
+                          ? "Low Risk"
+                          : "Very Low Risk"}
                   </Badge>
                 </div>
                 
                 {/* Progress Bar */}
-                <div className="relative h-2 w-full rounded-full bg-muted overflow-hidden">
+                <div className="relative h-1.5 w-full rounded-full bg-secondary overflow-hidden">
                   <div 
                     className={
                       order.variance_percent <= 15 
-                        ? "h-full rounded-full transition-all duration-300 bg-red-500" 
+                        ? "h-full rounded-full transition-all duration-300 bg-destructive" 
                         : order.variance_percent <= 25 
                           ? "h-full rounded-full transition-all duration-300 bg-amber-500" 
                           : order.variance_percent <= 35
-                            ? "h-full rounded-full transition-all duration-300 bg-green-500"
-                            : "h-full rounded-full transition-all duration-300 bg-blue-500"
+                            ? "h-full rounded-full transition-all duration-300 bg-primary"
+                            : "h-full rounded-full transition-all duration-300 bg-primary"
                     }
                     style={{ 
                       width: `${Math.min(100, ((order.variance_percent - 10) / 40) * 100)}%` 
@@ -1002,12 +1006,12 @@ export default function EngagementOrderDetail() {
                 {/* Description */}
                 <p className="text-xs text-muted-foreground">
                   {order.variance_percent <= 15 
-                    ? "High bot detection risk - patterns may be detected" 
+                    ? "High bot detection risk - patterns may be detected due to low variance" 
                     : order.variance_percent <= 25 
-                      ? "Moderate detection risk - some patterns visible" 
+                      ? "Moderate detection risk - some patterns might be visible" 
                       : order.variance_percent <= 35
                         ? "Natural looking organic pattern"
-                        : "100% undetectable organic pattern"}
+                        : "Highly undetectable organic pattern"}
                 </p>
               </div>
             )}

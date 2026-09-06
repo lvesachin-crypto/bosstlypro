@@ -446,10 +446,11 @@ export function TypeHistoryCard({
                   >
                     <div className="flex items-center gap-4">
                       {/* Run Number Circle - Colorful Gradient */}
-                      <div className={`flex items-center justify-center w-10 h-10 rounded-full font-bold text-sm ${isCompleted ? 'bg-gradient-to-br from-blue-500 to-teal-500 text-white' :
-                        isActive ? 'bg-gradient-to-br from-blue-500 to-cyan-500 text-white animate-pulse' :
-                          isFailed ? 'bg-gradient-to-br from-green-500 to-red-500 text-white' :
-                            'bg-gradient-to-br from-violet-500 to-purple-500 text-white'
+                      <div className={`flex items-center justify-center w-8 h-8 rounded-full font-mono text-xs font-bold shrink-0 ${
+                        isCompleted ? 'bg-secondary text-secondary-foreground' :
+                        isActive ? 'bg-primary text-primary-foreground' :
+                        isFailed ? 'bg-destructive text-destructive-foreground' :
+                        'bg-muted/50 text-foreground border border-border'
                         }`}>
                         #{run.run_number}
                       </div>
@@ -495,8 +496,8 @@ export function TypeHistoryCard({
                         {/* Timestamps Row - Colorful */}
                         <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
                           {run.runStartCount !== null && run.runStartCount !== undefined && (
-                            <span className="flex items-center gap-1 text-cyan-400">
-                              📊
+                            <span className="flex items-center gap-1.5 text-cyan-400">
+                              <BarChart3 className="h-4 w-4" />
                               <span className="font-bold tabular-nums text-foreground">
                                 {run.runStartCount.toLocaleString()}
                               </span>
@@ -517,8 +518,9 @@ export function TypeHistoryCard({
                               )}
                             </span>
                           )}
-                          <span className="flex items-center gap-1">
-                            📅 Scheduled: {format(scheduledDate, 'MMM d, hh:mm a')}
+                          <span className="flex items-center gap-1.5">
+                            <CalendarClock className="h-4 w-4 text-muted-foreground" /> 
+                            <span>Scheduled: {format(scheduledDate, 'MMM d, hh:mm a')}</span>
                             <span className={`ml-1 font-medium ${isActive ? 'text-blue-400' : isPastDue ? 'text-amber-500' : 'text-teal-400'}`}>
                               ({isActive ? `${relativeTime} ago` : isPastDue ? `${relativeTime} ago` : `in ${relativeTime}`})
                             </span>

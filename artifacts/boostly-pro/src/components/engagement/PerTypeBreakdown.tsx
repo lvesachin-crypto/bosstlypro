@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Eye, Heart, MessageCircle, Bookmark, Share2, TrendingUp, Zap, BarChart3, Pause, Play, X } from "lucide-react";
+import { Eye, Heart, MessageCircle, Bookmark, Share2, Zap, BarChart3, Pause, Play, X, Activity } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { format, formatDistanceToNow } from "date-fns";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,24 +14,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const ENGAGEMENT_CONFIG: Record<string, { icon: typeof Eye; label: string; emoji: string; color: string; bg: string; border: string }> = {
-  views: { icon: Eye, label: "Views", emoji: "👁️", color: "text-cyan-400", bg: "bg-cyan-500/20", border: "border-cyan-500/40" },
-  likes: { icon: Heart, label: "Likes", emoji: "❤️", color: "text-green-400", bg: "bg-green-500/20", border: "border-green-500/40" },
-  comments: { icon: MessageCircle, label: "Comments", emoji: "💬", color: "text-blue-400", bg: "bg-blue-500/20", border: "border-blue-500/40" },
-  saves: { icon: Bookmark, label: "Saves", emoji: "📥", color: "text-amber-400", bg: "bg-amber-500/20", border: "border-amber-500/40" },
-  shares: { icon: Share2, label: "Shares", emoji: "🔄", color: "text-violet-400", bg: "bg-violet-500/20", border: "border-violet-500/40" },
-  reposts: { icon: Share2, label: "Reposts", emoji: "🔁", color: "text-indigo-400", bg: "bg-indigo-500/20", border: "border-indigo-500/40" },
+const ENGAGEMENT_CONFIG: Record<string, { icon: typeof Eye; label: string; colorClass: string; bgClass: string; borderClass: string; textClass: string }> = {
+  views: { icon: Eye, label: "Views", colorClass: "text-blue-500", bgClass: "bg-blue-500/10", borderClass: "border-blue-500/20", textClass: "text-blue-600 dark:text-blue-400" },
+  likes: { icon: Heart, label: "Likes", colorClass: "text-rose-500", bgClass: "bg-rose-500/10", borderClass: "border-rose-500/20", textClass: "text-rose-600 dark:text-rose-400" },
+  comments: { icon: MessageCircle, label: "Comments", colorClass: "text-emerald-500", bgClass: "bg-emerald-500/10", borderClass: "border-emerald-500/20", textClass: "text-emerald-600 dark:text-emerald-400" },
+  saves: { icon: Bookmark, label: "Saves", colorClass: "text-amber-500", bgClass: "bg-amber-500/10", borderClass: "border-amber-500/20", textClass: "text-amber-600 dark:text-amber-400" },
+  shares: { icon: Share2, label: "Shares", colorClass: "text-indigo-500", bgClass: "bg-indigo-500/10", borderClass: "border-indigo-500/20", textClass: "text-indigo-600 dark:text-indigo-400" },
+  reposts: { icon: Share2, label: "Reposts", colorClass: "text-purple-500", bgClass: "bg-purple-500/10", borderClass: "border-purple-500/20", textClass: "text-purple-600 dark:text-purple-400" },
 };
 
-// Helper to get config with dynamic fallback
 const getEngagementConfig = (type: string) => {
   return ENGAGEMENT_CONFIG[type] || {
-    icon: Eye,
+    icon: Activity,
     label: type?.charAt(0).toUpperCase() + type?.slice(1) || "Items",
-    emoji: "📦",
-    color: "text-gray-400",
-    bg: "bg-gray-500/20",
-    border: "border-gray-500/40"
+    colorClass: "text-slate-500",
+    bgClass: "bg-slate-500/10",
+    borderClass: "border-slate-500/20",
+    textClass: "text-slate-600 dark:text-slate-400"
   };
 };
 
@@ -66,27 +64,23 @@ interface PerTypeBreakdownProps {
 
 export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuses, onPauseType, onResumeType, onCancelType }: PerTypeBreakdownProps) {
   const [cancelConfirmType, setCancelConfirmType] = useState<string | null>(null);
-  // Filter active types and sort by their appearance in ENGAGEMENT_CONFIG keys, unknown types at end
+
   const knownTypes = Object.keys(ENGAGEMENT_CONFIG);
   const activeTypes = types
     .filter(t => t.target > 0)
     .sort((a, b) => {
       const aIndex = knownTypes.indexOf(a.type);
       const bIndex = knownTypes.indexOf(b.type);
-      // If not found, put at end
       const aPos = aIndex === -1 ? 999 : aIndex;
       const bPos = bIndex === -1 ? 999 : bIndex;
       return aPos - bPos;
     });
 
-  // Compute cumulative history for each type - NO TARGET CAPPING
-  // Sum all runs (except failed) for real scheduled total
   const typeHistories = activeTypes.map(typeData => {
     const typeRuns = allRuns
       .filter(r => r.engagement_type === typeData.type)
       .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
     
-    // Calculate cumulative scheduled (NO capping, exclude failed)
     let cumulativeScheduled = 0;
     const history = typeRuns.map(run => {
       if (run.status !== 'failed') {
@@ -110,43 +104,39 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
     };
   });
 
-  // Grand totals - use scheduled as dynamic target when it exceeds original
   const grandScheduled = typeHistories.reduce((sum, t) => {
     const lastRun = t.history[t.history.length - 1];
     return sum + (lastRun?.cumulativeScheduled || 0);
   }, 0);
   const grandOriginalTarget = activeTypes.reduce((sum, t) => sum + t.target, 0);
-  const grandTarget = Math.max(grandOriginalTarget, grandScheduled); // Dynamic target
+  const grandTarget = Math.max(grandOriginalTarget, grandScheduled);
   const grandDelivered = activeTypes.reduce((sum, t) => sum + t.delivered, 0);
   const grandProgress = grandTarget > 0 ? (grandDelivered / grandTarget) * 100 : 0;
 
   return (
-    <div className="glass-card rounded-xl overflow-hidden">
-      {/* Header with Grand Total */}
-      <div className="p-3 sm:p-4 border-b border-border">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Zap className="h-5 w-5 text-foreground" />
-            <span className="font-bold text-base sm:text-lg text-foreground flex items-center gap-1.5"><BarChart3 className="h-4.5 w-4.5 text-primary" /> Live Engagement Stats</span>
-            <Badge variant="outline" className="text-muted-foreground border-border text-xs">
-              Real-time sync
-            </Badge>
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-border bg-muted/20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-muted-foreground" />
+            <span className="font-semibold text-foreground tracking-tight">Live Engagement Breakdown</span>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="text-xs sm:text-sm text-muted-foreground">Grand Total:</span>
-            <span className="font-bold text-lg sm:text-xl text-foreground">
+          <div className="flex items-center gap-3 bg-background border border-border px-3 py-1.5 rounded-md shadow-sm">
+            <span className="text-sm text-muted-foreground font-medium">Aggregate:</span>
+            <span className="font-bold text-base text-foreground tabular-nums">
               {grandDelivered.toLocaleString()} / {grandTarget.toLocaleString()}
             </span>
-            <Badge className="bg-foreground/10 text-foreground border-foreground/30">
-              {grandProgress.toFixed(0)}%
+            <Badge variant="secondary" className="font-mono text-xs">
+              {grandProgress.toFixed(1)}%
             </Badge>
           </div>
         </div>
       </div>
 
-      {/* Quick Summary Cards - Dynamic Types */}
-      <div className="p-4 border-b border-border bg-secondary/20">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {/* Cards Grid */}
+      <div className="p-4 bg-muted/10">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {activeTypes.map(typeData => {
             const config = getEngagementConfig(typeData.type);
             const Icon = config.icon;
@@ -154,7 +144,6 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
             const delivered = typeData.delivered || 0;
             const scheduled = typeData.scheduled || 0;
             
-            // Dynamic target = max of original and scheduled (when runs edited to exceed)
             const dynamicTarget = Math.max(originalTarget, scheduled);
             const progress = dynamicTarget > 0 ? (delivered / dynamicTarget) * 100 : 0;
 
@@ -163,15 +152,16 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
             const isPaused = itemStatus === 'paused';
             const isCancelled = itemStatus === 'cancelled';
             const isCompleted = itemStatus === 'completed';
-            const isTerminal = isCancelled || itemStatus === 'completed' || itemStatus === 'failed';
+            const isFailed = itemStatus === 'failed';
+            const isTerminal = isCancelled || isCompleted || isFailed;
 
             return (
               <div 
                 key={typeData.type} 
-                className={`relative p-3 rounded-xl ${config.bg} border ${config.border} transition-all duration-300 ${
-                  isPaused ? 'ring-1 ring-amber-500/30 grayscale-[30%]' : ''
-                } ${isCancelled ? 'ring-1 ring-destructive/30 grayscale-[50%]' : ''} ${
-                  onTypeClick ? 'cursor-pointer hover:scale-[1.02] hover:shadow-lg' : ''
+                className={`group flex flex-col p-3.5 rounded-lg border transition-all ${config.bgClass} ${config.borderClass} ${
+                  isPaused ? 'opacity-75 grayscale-[30%]' : ''
+                } ${isCancelled ? 'opacity-50 grayscale-[80%]' : ''} ${
+                  onTypeClick ? 'cursor-pointer hover:border-foreground/20 hover:shadow-sm' : ''
                 }`}
                 onClick={() => onTypeClick?.(typeData.type)}
                 role={onTypeClick ? "button" : undefined}
@@ -183,68 +173,63 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
                   }
                 }}
               >
-                {/* Status overlay stripe */}
-                {isPaused && (
-                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 rounded-t-xl" />
-                )}
-                {isCancelled && (
-                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-destructive via-red-400 to-destructive rounded-t-xl" />
-                )}
-                {isCompleted && (
-                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500 rounded-t-xl" />
-                )}
-
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
-                    <Icon className={`h-4 w-4 ${config.color}`} />
-                    <span className={`text-xs uppercase font-bold tracking-wider ${config.color}`}>{config.label}</span>
+                    <Icon className={`h-4 w-4 ${config.colorClass}`} />
+                    <span className={`text-xs uppercase font-bold tracking-wider ${config.textClass}`}>{config.label}</span>
                   </div>
                   {isPaused && (
-                    <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20">
-                      <Pause className="h-2.5 w-2.5" /> PAUSED
-                    </span>
+                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4 border-amber-500/40 text-amber-600 bg-amber-500/10">Paused</Badge>
                   )}
                   {isCancelled && (
-                    <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-md border border-destructive/20">
-                      <X className="h-2.5 w-2.5" /> STOPPED
-                    </span>
+                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4 border-destructive/40 text-destructive bg-destructive/10">Stopped</Badge>
                   )}
                   {isCompleted && (
-                    <span className="flex items-center gap-1 text-[10px] font-black text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-md border border-blue-500/20 uppercase tracking-wider">
-                      ✓ Completed
-                    </span>
+                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4 border-blue-500/40 text-blue-600 bg-blue-500/10">Done</Badge>
                   )}
                 </div>
-                <div className="flex items-baseline gap-1">
-                  <span className={`text-xl font-bold tabular-nums ${config.color}`}>{delivered.toLocaleString()}</span>
-                  <span className="text-xs text-muted-foreground">/ {dynamicTarget.toLocaleString()}</span>
-                </div>
-                <Progress value={Math.min(progress, 100)} className="h-1.5 mt-2" />
                 
-                {/* Sleek inline action buttons */}
+                <div className="flex items-baseline gap-1 mt-auto">
+                  <span className={`text-xl font-bold tabular-nums ${config.textClass}`}>
+                    {delivered.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium">
+                    / {dynamicTarget.toLocaleString()}
+                  </span>
+                </div>
+                
+                <Progress value={Math.min(progress, 100)} className="h-1.5 mt-2.5 bg-background border border-border/50" />
+                
+                {/* Actions */}
                 {itemInfo && !isTerminal && (
-                  <div className="flex items-center gap-1 mt-2.5 pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border/40" onClick={(e) => e.stopPropagation()}>
                     {isPaused ? (
-                      <button 
-                        className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 transition-colors"
+                      <Button 
+                        size="sm" 
+                        variant="secondary"
+                        className="flex-1 h-7 text-[10px] uppercase font-bold tracking-wider gap-1 bg-background hover:bg-muted"
                         onClick={() => onResumeType?.(itemInfo.id)}
                       >
                         <Play className="h-3 w-3" /> Resume
-                      </button>
+                      </Button>
                     ) : (
-                      <button 
-                        className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1 rounded-md bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-colors"
+                      <Button 
+                        size="sm" 
+                        variant="secondary"
+                        className="flex-1 h-7 text-[10px] uppercase font-bold tracking-wider gap-1 bg-background hover:bg-muted text-muted-foreground"
                         onClick={() => onPauseType?.(itemInfo.id)}
                       >
                         <Pause className="h-3 w-3" /> Pause
-                      </button>
+                      </Button>
                     )}
-                    <button 
-                      className="flex items-center justify-center gap-1 text-[11px] font-semibold py-1 px-2.5 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       onClick={() => setCancelConfirmType(typeData.type)}
                     >
-                      <X className="h-3 w-3" />
-                    </button>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 )}
               </div>
@@ -253,24 +238,20 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
         </div>
       </div>
 
-      {/* Cancel Confirmation Dialog */}
       <AlertDialog open={!!cancelConfirmType} onOpenChange={(open) => !open && setCancelConfirmType(null)}>
-        <AlertDialogContent className="border-destructive/20 bg-background/95 backdrop-blur-xl">
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-destructive/10 border border-destructive/20 mx-auto mb-2">
-              <X className="h-6 w-6 text-destructive" />
-            </div>
-            <AlertDialogTitle className="text-center">
+            <AlertDialogTitle>
               Cancel {cancelConfirmType ? getEngagementConfig(cancelConfirmType).label : ''}?
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-center">
-              All pending runs will be permanently stopped and <strong>never sent to the provider</strong>. Completed deliveries remain untouched.
+            <AlertDialogDescription>
+              All pending runs for this type will be permanently stopped. They will not be sent to the provider. Any runs already completed will remain.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="sm:justify-center gap-2">
-            <AlertDialogCancel className="sm:w-32">Keep Active</AlertDialogCancel>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Active</AlertDialogCancel>
             <AlertDialogAction 
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 sm:w-32"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (cancelConfirmType && itemStatuses?.[cancelConfirmType]) {
                   onCancelType?.(itemStatuses[cancelConfirmType].id);

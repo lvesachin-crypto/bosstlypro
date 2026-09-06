@@ -183,7 +183,7 @@ export function OrderProgressChart({ runs, perType }: OrderProgressChartProps) {
   const progressPercent = stats ? Math.round((stats.totalDelivered / stats.totalScheduled) * 100) : 0;
 
   return (
-    <Card className="border-2 border-border bg-gradient-to-br from-background to-secondary/20 overflow-hidden">
+    <Card className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -233,7 +233,7 @@ export function OrderProgressChart({ runs, perType }: OrderProgressChartProps) {
                   className="w-2 h-2 rounded-full" 
                   style={{ backgroundColor: color }}
                 />
-                <span className="text-xs">{config?.emoji || '📊'}</span>
+                <span className="text-xs uppercase font-semibold">{config?.label || type}</span>
                 <span className="text-xs font-bold text-foreground">
                   {delivered.toLocaleString()}/{scheduled.toLocaleString()}
                 </span>
@@ -283,7 +283,7 @@ export function OrderProgressChart({ runs, perType }: OrderProgressChartProps) {
                                 className="w-2 h-2 rounded-full" 
                                 style={{ backgroundColor: TYPE_COLORS[type] || '#888' }}
                               />
-                              <span>{config?.emoji || '📊'}</span>
+                              <span className="text-xs uppercase font-medium">{config?.label || type}</span>
                               <span className="font-bold">{(entry.value as number).toLocaleString()}</span>
                             </div>
                           );
