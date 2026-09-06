@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Menu } from 'lucide-react';
-import { Sidebar } from './Sidebar';
+import { Sidebar } from '@/components/layout/Sidebar';
 import logo from '@/assets/logo.png';
 
 export function MobileBottomNav() {
