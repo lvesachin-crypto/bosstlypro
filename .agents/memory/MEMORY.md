@@ -1,0 +1,1 @@
+- [Lovable database imports](lovable-database-imports.md) — preserve Supabase backups in an isolated schema and link safe identity data to Clerk by email.
