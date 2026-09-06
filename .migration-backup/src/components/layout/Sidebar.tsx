@@ -44,6 +44,7 @@ const appBasePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 export function Sidebar({ onClose }: SidebarProps) {
   const location = useLocation();
   const { isAdmin, signOut, profile, user } = useAuth();
+  const displayName = profile?.full_name || profile?.fullName || profile?.email?.split('@')[0] || 'User';
 
   const { data: providerStats } = useQuery({
     queryKey: ['sidebar-provider-balance', user?.id],
@@ -144,10 +145,10 @@ export function Sidebar({ onClose }: SidebarProps) {
             className="w-9 h-9 rounded-xl flex items-center justify-center text-[13px] font-black text-white shrink-0"
             style={{ background: `linear-gradient(135deg, ${C.pink}, ${C.pink2})` }}
           >
-            {profile.full_name?.[0]?.toUpperCase() || profile.email?.[0]?.toUpperCase() || 'U'}
+            {displayName[0]?.toUpperCase() || 'U'}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-bold truncate" style={{ color: C.navy }}>{profile.full_name || 'User'}</p>
+            <p className="text-[13px] font-bold truncate" style={{ color: C.navy }}>{displayName}</p>
             <p className="text-[10.5px] truncate" style={{ color: C.ink }}>{profile.email}</p>
           </div>
         </div>

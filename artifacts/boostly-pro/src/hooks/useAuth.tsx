@@ -56,7 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUserData = useCallback(async () => {
     try {
       const data = await api.getDashboard();
-      if (data.profile) setProfile(data.profile);
+       if (data.profile) {
+         setProfile({
+           ...data.profile,
+           full_name: data.profile.full_name ?? data.profile.fullName ?? null,
+         });
+       }
       if (data.wallet) setWallet(data.wallet);
       setRole(data.role === 'admin' ? 'admin' : 'user');
     } catch (error) {
