@@ -428,7 +428,7 @@ export function TypeHistoryCard({
                   if (run.status === 'cancelled') return isAutoCompletedCancel ? 'Completed' : 'CANCELLED';
                   if (isFailed) return 'FAILED';
                   if (isUpcoming) return 'Scheduled';
-                  if (isPending) return "'''Do not make any visual modifications. The phrases I write are commands to understand what I want, not to be written down. Understand their content well, then execute what is required.'''\n                                            \n                                            are hindi me bol ase kre de sytem ko cron job me syd jyda clius kahta hai to postqrl kake kuch hota usme credir nhi khta hai mere webste pr jyda credt jaa rhahi lovbale k sahi r";
+                  if (isPending) return 'Pending';
                   if (isCompleted) return 'Completed';
                   return run.status.toUpperCase();
                 };
