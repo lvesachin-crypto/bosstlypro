@@ -22,3 +22,6 @@ timeoutMs = 20000
 [nix]
 channel = "stable-25_05"
 packages = ["postgresql_17"]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-28538ad2-2fc5-4473-9f95-a1900c0687aa"

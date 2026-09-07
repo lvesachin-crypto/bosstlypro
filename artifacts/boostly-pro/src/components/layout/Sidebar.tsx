@@ -51,9 +51,13 @@ export function Sidebar({ onClose }: SidebarProps) {
   // still arriving nothing on screen changes, which reads as an ignored click.
   // Highlight the tapped item at once and keep it lit until the route lands.
   const [pendingPath, setPendingPath] = useState<string | null>(null);
+  useEffect(() => { setPendingPath(null); }, [location.pathname]);
+  // Safety net: never leave a spinner running for more than 2 s.
   useEffect(() => {
-    setPendingPath(null);
-  }, [location.pathname]);
+    if (!pendingPath) return;
+    const t = window.setTimeout(() => setPendingPath(null), 2000);
+    return () => window.clearTimeout(t);
+  }, [pendingPath]);
 
   useEffect(() => {
     const idleWindow = window as Window & {

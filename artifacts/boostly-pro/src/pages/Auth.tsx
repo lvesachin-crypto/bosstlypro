@@ -90,12 +90,13 @@ export default function Auth() {
         }
       } else {
         const values = signupSchema.parse({ email, password, fullName });
-        const names = values.fullName.trim().split(/\s+/);
+        // The name travels as metadata: Clerk rejects first_name/last_name
+        // unless the instance has the "Name" attribute enabled, and the
+        // production instance does not. The API copies it into the profile.
         const { error: signUpError } = await signUp.password({
           emailAddress: values.email,
           password: values.password,
-          firstName: names[0],
-          lastName: names.slice(1).join(" ") || undefined,
+          unsafeMetadata: { fullName: values.fullName.trim() },
         });
         if (signUpError) throw signUpError;
         const { error: sendCodeError } = await signUp.verifications.sendEmailCode();
@@ -229,6 +230,10 @@ export default function Auth() {
             {!isLogin && <Field label="Full name"><Input autoComplete="name" placeholder="John Doe" value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} /></Field>}
             <Field label="Email"><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} /></Field>
             <PasswordField value={password} setValue={setPassword} show={showPassword} setShow={setShowPassword} inputClass={inputClass} onForgot={isLogin ? () => switchMode("forgot") : undefined} />
+            {/* Mount point for Clerk's bot-protection widget on custom sign-up
+                flows; without it Clerk falls back to an invisible challenge
+                that fails to load in some browsers. */}
+            {!isLogin && <div id="clerk-captcha" className="empty:hidden" />}
             <Messages error={error} success={successMessage} />
             <SubmitButton loading={isSubmitting}>{isLogin ? "Sign in" : "Create account"}</SubmitButton>
             <p className="text-center text-[13px] text-[#999]">

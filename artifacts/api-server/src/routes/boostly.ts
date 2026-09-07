@@ -25,8 +25,16 @@ function userId(req: AuthenticatedRequest): string {
 /** JIT provisioning replaces the former Supabase auth.users trigger. */
 const accountCache = new Map<string, { expiresAt: number; value: Promise<string | null> }>();
 
+// Sign-up stores the chosen name in unsafe metadata because the Clerk
+// instance has no first/last name attribute; it becomes the profile name.
+function signUpFullName(user: { unsafeMetadata?: Record<string, unknown> | null }): string | null {
+  const value = user.unsafeMetadata?.fullName;
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : null;
+}
+
 async function provisionAccount(id: string): Promise<string | null> {
   const clerkUser = await clerkClient.users.getUser(id);
+  const clerkName = clerkUser.fullName ?? signUpFullName(clerkUser);
   const email =
     clerkUser.emailAddresses.find((address) => address.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
     clerkUser.emailAddresses[0]?.emailAddress ??
@@ -54,11 +62,11 @@ async function provisionAccount(id: string): Promise<string | null> {
   await db.transaction(async (tx) => {
     const [profile] = await tx.select({ id: profilesTable.id }).from(profilesTable).where(eq(profilesTable.userId, id)).limit(1);
     if (!profile) {
-      await tx.insert(profilesTable).values({ userId: id, email, fullName: old?.full_name ?? clerkUser.fullName, currency: old?.currency ?? "USD" }).onConflictDoNothing();
+      await tx.insert(profilesTable).values({ userId: id, email, fullName: old?.full_name ?? clerkName, currency: old?.currency ?? "USD" }).onConflictDoNothing();
       await tx.insert(walletsTable).values({ userId: id, balance: old?.balance ?? "0", totalDeposited: old?.total_deposited ?? "0", totalSpent: old?.total_spent ?? "0" }).onConflictDoNothing();
       await tx.insert(userRolesTable).values({ userId: id, role: old?.role ?? "user" }).onConflictDoNothing();
     } else if (old) {
-      await tx.update(profilesTable).set({ email, fullName: old.full_name ?? clerkUser.fullName, currency: old.currency ?? "USD" }).where(eq(profilesTable.userId, id));
+      await tx.update(profilesTable).set({ email, fullName: old.full_name ?? clerkName, currency: old.currency ?? "USD" }).where(eq(profilesTable.userId, id));
       await tx.update(walletsTable).set({ balance: old.balance ?? "0", totalDeposited: old.total_deposited ?? "0", totalSpent: old.total_spent ?? "0" }).where(eq(walletsTable.userId, id));
       await tx.update(userRolesTable).set({ role: old.role ?? "user" }).where(eq(userRolesTable.userId, id));
     }
