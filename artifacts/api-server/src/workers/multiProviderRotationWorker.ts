@@ -111,7 +111,10 @@ async function claimRun(): Promise<any | null> {
           AND COALESCE(eoi.status,'pending') NOT IN ('paused','cancelled','canceled')
           AND rs.provider_order_id IS NULL
           AND COALESCE(rs.dispatch_uncertain,false)=false
-        ORDER BY rs.scheduled_at,rs.run_number,rs.created_at
+         ORDER BY
+           CASE WHEN eo.created_at >= now()-interval '24 hours' THEN 0 ELSE 1 END,
+           CASE WHEN eo.created_at >= now()-interval '24 hours' THEN eo.created_at END DESC,
+           rs.scheduled_at,rs.run_number,rs.created_at
         FOR UPDATE OF rs SKIP LOCKED
         LIMIT 1
      ), claimed AS (
