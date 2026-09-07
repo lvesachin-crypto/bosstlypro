@@ -31,10 +31,17 @@ async function provider(id: string, userId: string): Promise<any | null> {
   const result = await pool.query("SELECT * FROM lovable_legacy.user_provider_accounts WHERE id=$1::uuid AND user_id=$2::uuid", [id, userId]);
   return result.rows[0] ?? null;
 }
+const bundleMapping = z.object({
+  account_id: z.string().uuid(),
+  enabled: z.boolean(),
+  service_id: z.string().regex(/^\d+$/).nullable(),
+  priority: z.coerce.number().int().min(1),
+});
 const body = z.object({
-  op: z.enum(["create", "rotate_key", "test", "import_services", "validate_service", "place_order"]),
+  op: z.enum(["create", "rotate_key", "test", "import_services", "validate_service", "place_order", "save_bundle_mappings"]),
   id: z.string().uuid().optional(), name: z.string().optional(), api_url: z.string().optional(), api_key: z.string().optional(),
   account_id: z.string().uuid().optional(), service_id: z.string().optional(), user_service_id: z.string().uuid().optional(),
+  item_id: z.string().uuid().optional(), mappings: z.array(bundleMapping).max(100).optional(),
   link: z.string().optional(), quantity: z.coerce.number().optional(),
 });
 
@@ -64,6 +71,60 @@ router.post("/functions/user-provider-manage", async (req, res): Promise<void> =
       const response = await panel(row.api_url, decryptProviderCredential(row.api_key_ciphertext), "add", { service: row.provider_service_id, link: data.link.trim(), quantity: data.quantity });
       if (response?.error) { res.status(400).json({ error: String(response.error) }); return; }
       res.json({ ok: true, provider_response: response }); return;
+    }
+    if (data.op === "save_bundle_mappings") {
+      if (!data.item_id || !data.mappings) { res.status(400).json({ error: "item_id and mappings required" }); return; }
+      const enabledPriorities = data.mappings.filter((mapping) => mapping.enabled).map((mapping) => mapping.priority);
+      if (new Set(enabledPriorities).size !== enabledPriorities.length) {
+        res.status(400).json({ error: "Enabled providers must have unique priorities." }); return;
+      }
+      const accountIds = [...new Set(data.mappings.map((mapping) => mapping.account_id))];
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const item = await client.query(
+          "SELECT 1 FROM lovable_legacy.user_bundle_items WHERE id=$1::uuid AND user_id=$2::uuid FOR UPDATE",
+          [data.item_id, userId],
+        );
+        if (!item.rows[0]) throw new Error("Bundle item not found.");
+        if (accountIds.length) {
+          const owned = await client.query(
+            "SELECT id FROM lovable_legacy.user_provider_accounts WHERE user_id=$1::uuid AND id=ANY($2::uuid[])",
+            [userId, accountIds],
+          );
+          if (owned.rowCount !== accountIds.length) throw new Error("One or more provider accounts do not belong to this user.");
+        }
+        const existing = await client.query<{ id: string; user_provider_account_id: string }>(
+          "SELECT id,user_provider_account_id FROM lovable_legacy.user_bundle_item_providers WHERE user_bundle_item_id=$1::uuid AND user_id=$2::uuid FOR UPDATE",
+          [data.item_id, userId],
+        );
+        const existingByAccount = new Map(existing.rows.map((row) => [row.user_provider_account_id, row.id]));
+        await client.query(
+          "UPDATE lovable_legacy.user_bundle_item_providers SET priority=-(1000000 + abs(priority)) WHERE user_bundle_item_id=$1::uuid AND user_id=$2::uuid",
+          [data.item_id, userId],
+        );
+        for (const mapping of data.mappings) {
+          const rowId = existingByAccount.get(mapping.account_id);
+          if (rowId) {
+            await client.query(
+              "UPDATE lovable_legacy.user_bundle_item_providers SET enabled=$1,provider_service_id=$2,priority=$3,updated_at=now() WHERE id=$4::uuid AND user_id=$5::uuid",
+              [mapping.enabled, mapping.service_id, mapping.priority, rowId, userId],
+            );
+          } else {
+            await client.query(
+              "INSERT INTO lovable_legacy.user_bundle_item_providers (user_id,user_bundle_item_id,user_provider_account_id,enabled,provider_service_id,priority) VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6)",
+              [userId, data.item_id, mapping.account_id, mapping.enabled, mapping.service_id, mapping.priority],
+            );
+          }
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true, saved: data.mappings.length }); return;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     }
     const id = data.id ?? data.account_id;
     if (!id) { res.status(400).json({ error: "Provider id required" }); return; }

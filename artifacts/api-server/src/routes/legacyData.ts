@@ -104,12 +104,16 @@ async function hydrate(table: string, rows: Record<string, unknown>[], select = 
   }
   if (table === "user_bundles" && select.includes("user_bundle_items")) {
     const bundleIds = rows.map((row) => row.id);
-    const items = await pool.query<Record<string, unknown>>("SELECT * FROM lovable_legacy.user_bundle_items WHERE user_bundle_id = ANY($1::uuid[])", [bundleIds]);
+    const ownerIds = [...new Set(rows.map((row) => row.user_id))];
+    const items = await pool.query<Record<string, unknown>>(
+      "SELECT * FROM lovable_legacy.user_bundle_items WHERE user_bundle_id = ANY($1::uuid[]) AND user_id = ANY($2::uuid[])",
+      [bundleIds, ownerIds],
+    );
     const itemIds = items.rows.map((item) => item.id);
     const mappings = itemIds.length && select.includes("user_bundle_item_providers")
       ? await pool.query<Record<string, unknown>>(
-        "SELECT * FROM lovable_legacy.user_bundle_item_providers WHERE user_bundle_item_id = ANY($1::uuid[])",
-        [itemIds],
+        "SELECT * FROM lovable_legacy.user_bundle_item_providers WHERE user_bundle_item_id = ANY($1::uuid[]) AND user_id = ANY($2::uuid[])",
+        [itemIds, ownerIds],
       )
       : { rows: [] as Record<string, unknown>[] };
     const mappingsByItem = new Map<string, Record<string, unknown>[]>();

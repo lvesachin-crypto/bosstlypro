@@ -21,6 +21,7 @@ const ENGAGEMENT_TYPES = [
   { key: 'reposts', label: 'Reposts', icon: Repeat2 },
   { key: 'followers', label: 'Followers', icon: UserPlus },
 ];
+const EMPTY_ROWS: any[] = [];
 
 export default function MyBundles() {
   const { user } = useAuth();
@@ -56,14 +57,15 @@ export default function MyBundles() {
   }, [bundlesError]);
 
 
-  const { data: accounts = [] } = useQuery({
+  const { data: accountRows } = useQuery({
     queryKey: ['user-provider-accounts-min', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
-      const { data } = await supabase.from('user_provider_accounts').select('id, name').eq('is_active', true).order('name');
+      const { data } = await supabase.from('user_provider_accounts').select('id, name, is_active').order('name');
       return data || [];
     },
   });
+  const accounts = accountRows ?? EMPTY_ROWS;
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['user-bundles'] });
 
@@ -224,7 +226,6 @@ export default function MyBundles() {
                               itemId={it.id}
                               itemLabel={`${b.platform} ${it.engagement_type}`}
                               accounts={accounts as any[]}
-                              userId={user?.id || ''}
                               onChanged={refresh}
                             />
                           </div>
@@ -264,10 +265,10 @@ export default function MyBundles() {
 }
 
 function ProvidersPanel({
-  itemId, itemLabel, accounts, userId, onChanged,
-}: { itemId: string; itemLabel: string; accounts: any[]; userId: string; onChanged?: () => void }) {
+  itemId, itemLabel, accounts, onChanged,
+}: { itemId: string; itemLabel: string; accounts: any[]; onChanged?: () => void }) {
   const qc = useQueryClient();
-  const { data: mappings = [] } = useQuery({
+  const { data: mappingRows } = useQuery({
     queryKey: ['ubi-providers', itemId],
     enabled: !!itemId,
     queryFn: async () => {
@@ -275,6 +276,7 @@ function ProvidersPanel({
       return data || [];
     },
   });
+  const mappings = mappingRows ?? EMPTY_ROWS;
 
   const byAccount: Record<string, any> = {};
   for (const m of mappings) byAccount[m.user_provider_account_id] = m;
@@ -337,7 +339,8 @@ function ProvidersPanel({
       }
 
 
-      // Validate all non-empty service IDs first
+      // Validate all non-empty service IDs locally. The mapping belongs to the
+      // stable provider account and survives API-key rotation or downtime.
       for (const c of changed) {
         const sid = c.draft.provider_service_id.trim();
         if (!sid) continue;
@@ -345,56 +348,28 @@ function ProvidersPanel({
           toast.error(`Service ID must be numeric (${accounts.find(x=>x.id===c.accountId)?.name})`);
           return;
         }
-        const prevSid = c.existing?.provider_service_id || '';
-        if (sid === prevSid) continue;
-        const { data: sess } = await supabase.auth.getSession();
-        const token = sess?.session?.access_token;
-        const { data, error } = await supabase.functions.invoke('user-provider-manage', {
-          body: { op: 'validate_service', account_id: c.accountId, service_id: sid },
-          headers: token
-            ? { Authorization: `Bearer ${token}`, 'x-region': 'us-east-1' }
-            : { 'x-region': 'us-east-1' },
-        });
-        if (error) { toast.error(error.message || 'Validation failed'); return; }
-        if (!data?.ok) { toast.error(`${accounts.find(x=>x.id===c.accountId)?.name}: ${data?.error || 'Invalid Service ID'}`); return; }
       }
 
-      // Pre-pass: park existing rows at temporary negative priorities to avoid
-      // the partial-unique-index collision when users swap priorities.
-      let tmp = -1;
-      for (const c of changed) {
-        if (c.existing) {
-          const { error } = await supabase
-            .from('user_bundle_item_providers')
-            .update({ priority: tmp-- })
-            .eq('id', c.existing.id);
-          if (error) { toast.error(error.message); return; }
-        }
+      const { data, error } = await supabase.functions.invoke('user-provider-manage', {
+        body: {
+          op: 'save_bundle_mappings',
+          item_id: itemId,
+          mappings: accounts.map((account) => {
+            const draft = drafts[account.id];
+            const serviceId = draft?.provider_service_id.trim() || '';
+            return {
+              account_id: account.id,
+              enabled: !!draft?.enabled,
+              service_id: serviceId || null,
+              priority: draft?.priority ?? 1,
+            };
+          }),
+        },
+      });
+      if (error || !data?.ok) {
+        toast.error(error?.message || data?.error || 'Failed to save bundle mappings');
+        return;
       }
-
-      // Persist changes
-      for (const c of changed) {
-        const sid = c.draft.provider_service_id.trim();
-        const payload = {
-          enabled: c.draft.enabled,
-          provider_service_id: sid === '' ? null : sid,
-          priority: c.draft.priority,
-        };
-        if (c.existing) {
-          const { error } = await supabase.from('user_bundle_item_providers').update(payload).eq('id', c.existing.id);
-          if (error) { toast.error(error.message); return; }
-        } else {
-          const { error } = await supabase.from('user_bundle_item_providers').insert({
-            user_id: userId,
-            user_bundle_item_id: itemId,
-            user_provider_account_id: c.accountId,
-            ...payload,
-          });
-          if (error) { toast.error(error.message); return; }
-        }
-      }
-
-
       toast.success(`Saved ${changed.length} change${changed.length > 1 ? 's' : ''}`);
       await qc.invalidateQueries({ queryKey: ['ubi-providers', itemId] });
       onChanged?.();
@@ -434,7 +409,10 @@ function ProvidersPanel({
                   </button>
                 </div>
                 <div className="min-w-0 flex-1 order-2">
-                  <div className="font-medium truncate">{a.name}</div>
+                  <div className="font-medium truncate">
+                    {a.name}
+                    {!a.is_active && <span className="ml-2 text-[10px] font-medium text-amber-700 bg-amber-100 rounded-full px-1.5 py-0.5">API inactive</span>}
+                  </div>
                   <div className="text-[11px] text-muted-foreground truncate sm:hidden">Account</div>
                 </div>
                 <div className="order-4 sm:order-3 w-full sm:w-auto">

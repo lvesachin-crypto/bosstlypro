@@ -1,1 +1,2 @@
 - [Lovable database imports](lovable-database-imports.md) — preserve Supabase backups in an isolated schema and link safe identity data to Clerk by email.
+- [Bundle provider mappings](bundle-provider-mappings.md) — service mappings belong to stable provider accounts and must survive API-key rotation or temporary inactivity.
