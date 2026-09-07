@@ -1,38 +1,10 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { ENGAGEMENT_CONFIG, EngagementType } from "@/lib/engagement-types";
 import { format } from "date-fns";
 import { Activity, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
-
-// Local EngagementType to avoid importing from non-existent paths
-type EngagementType = 'views' | 'likes' | 'comments' | 'saves' | 'shares' | 'followers' | 'subscribers' | 'watch_hours' | 'retweets' | 'reposts';
-
-const ENGAGEMENT_CONFIG: Record<string, { label: string }> = {
-  views: { label: "Views" },
-  likes: { label: "Likes" },
-  comments: { label: "Comments" },
-  saves: { label: "Saves" },
-  shares: { label: "Shares" },
-  followers: { label: "Followers" },
-  subscribers: { label: "Subscribers" },
-  watch_hours: { label: "Watch Hours" },
-  retweets: { label: "Retweets" },
-  reposts: { label: "Reposts" },
-};
-
-const TYPE_COLORS: Record<string, string> = {
-  views: '#3b82f6',     // blue-500
-  likes: '#10b981',     // emerald-500
-  comments: '#10b981',  // emerald-500
-  saves: '#f59e0b',     // amber-500
-  shares: '#6366f1',    // indigo-500
-  reposts: '#a855f7',   // purple-500
-  retweets: '#0ea5e9',  // sky-500
-  followers: '#14b8a6', // teal-500
-  subscribers: '#ef4444',// red-500
-  watch_hours: '#f97316',// orange-500
-};
 
 interface Run {
   id: string;
@@ -50,182 +22,315 @@ interface Run {
 
 interface OrderProgressChartProps {
   runs: Run[];
-  perType: { type: string; target: number; delivered: number; scheduled?: number }[];
+  perType: {
+    type: string;
+    target: number;
+    delivered: number;
+    scheduled: number;
+  }[];
 }
 
-export function OrderProgressChart({ runs = [], perType = [] }: OrderProgressChartProps) {
-  const chartData = useMemo(() => {
-    if (!runs.length) return [];
+// Distinct vibrant colors for each engagement type - easily distinguishable
+const TYPE_COLORS: Record<string, string> = {
+  views: "#3b82f6",      // Blue - Primary, most visible
+  likes: "#2563eb",      // Pink - Warm, distinct from blue
+  comments: "#3b82f6",   // Emerald Green - Cool, stands out
+  saves: "#f59e0b",      // Amber/Orange - Warm accent
+  shares: "#8b5cf6",     // Violet/Purple - Distinct cool tone
+  followers: "#06b6d4",  // Cyan - Fresh, tech feel
+  subscribers: "#ef4444", // Red - Strong contrast
+  watch_hours: "#f97316", // Orange - Warm, energetic
+  retweets: "#14b8a6",   // Teal - Cool, calm
+  reposts: "#1D5CFF",    // Purple - Rich, distinct
+};
 
-    const sortedRuns = [...runs].sort(
-      (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
-    );
+export function OrderProgressChart({ runs, perType }: OrderProgressChartProps) {
+  const isTargetCompleteCancelMessage = (message: string) => (
+    message.startsWith('target met') ||
+    message.startsWith('target count reached') ||
+    message.includes('target count reached') ||
+    message.includes('target reached') ||
+    message.includes('cancelling remaining runs') ||
+    message.startsWith('delivery reserved') ||
+    message.includes('already delivered') ||
+    message.includes('auto-cancelled') ||
+    message.includes('auto completed') ||
+    message.includes('auto-completed') ||
+    message.includes('item completed')
+  );
 
-    const dataPoints: Record<string, any> = {};
-    const cumulative: Record<string, number> = {};
+  const { chartData, stats, activeTypes } = useMemo(() => {
+    if (!runs || runs.length === 0) {
+      return { chartData: [], stats: null, activeTypes: [] };
+    }
 
-    sortedRuns.forEach((run) => {
-      const date = new Date(run.scheduled_at);
-      const timeKey = format(date, "MMM d, HH:mm");
-      const type = run.engagement_type;
+    // Get unique engagement types from actual runs
+    const activeTypes = [...new Set(runs.map(r => r.engagement_type))].filter(Boolean);
 
-      if (!cumulative[type]) cumulative[type] = 0;
+    // Filter only runs that have ACTUAL delivery (completed or started with some delivery)
+    const deliveredRuns = runs.filter(run => {
+      const status = (run.status || '').toLowerCase().trim();
+      const message = (run.error_message || '').toLowerCase().trim();
+      const isTargetMetAutoCompleted = (status === 'cancelled' || status === 'canceled') && isTargetCompleteCancelMessage(message);
 
-      const isDelivered = run.status === 'completed' || (run.status === 'cancelled' && run.error_message?.toLowerCase().includes('target met'));
-      
-      let deliveredAmount = 0;
-      if (isDelivered) {
-        deliveredAmount = run.quantity_to_send;
-      } else if ((run.status === 'started' || run.status === 'failed') && run.provider_remains !== undefined && run.provider_remains !== null) {
-        deliveredAmount = Math.max(0, run.quantity_to_send - run.provider_remains);
+      if (run.status === 'completed' || isTargetMetAutoCompleted) return true;
+      if ((run.status === 'started' || run.status === 'failed') && 
+          run.provider_remains !== null && run.provider_remains !== undefined) {
+        return run.quantity_to_send - run.provider_remains > 0;
       }
-
-      if (deliveredAmount > 0) {
-        cumulative[type] += deliveredAmount;
-      }
-
-      if (!dataPoints[timeKey]) {
-        dataPoints[timeKey] = {
-          time: timeKey,
-          timestamp: date.getTime(),
-          ...cumulative
-        };
-      } else {
-        dataPoints[timeKey] = {
-          ...dataPoints[timeKey],
-          [type]: cumulative[type]
-        };
-      }
+      return false;
     });
 
-    const types = Array.from(new Set(runs.map(r => r.engagement_type)));
-    let lastKnown: Record<string, number> = {};
+    // Sort by completed_at or scheduled_at (actual delivery time)
+    const sortedRuns = [...deliveredRuns].sort((a, b) => {
+      const timeA = new Date(a.completed_at || a.started_at || a.scheduled_at).getTime();
+      const timeB = new Date(b.completed_at || b.started_at || b.scheduled_at).getTime();
+      return timeA - timeB;
+    });
 
-    return Object.values(dataPoints)
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .map(point => {
-        const fullPoint = { ...point };
-        types.forEach(type => {
-          if (fullPoint[type] === undefined) {
-            fullPoint[type] = lastKnown[type] || 0;
-          } else {
-            lastKnown[type] = fullPoint[type];
-          }
-        });
-        return fullPoint;
+    if (sortedRuns.length === 0) {
+      return { chartData: [], stats: null, activeTypes: [] };
+    }
+
+    // Initialize cumulative counters for each type
+    const cumulative: Record<string, number> = {};
+    activeTypes.forEach(type => {
+      cumulative[type] = 0;
+    });
+
+    // Build chart data - ONLY actual delivered quantities
+    const chartData: Record<string, any>[] = [];
+
+    // Add starting point at 0
+    const firstRunTime = new Date(sortedRuns[0].completed_at || sortedRuns[0].started_at || sortedRuns[0].scheduled_at);
+    const startPoint: Record<string, any> = {
+      time: format(new Date(firstRunTime.getTime() - 60000), 'HH:mm'),
+      timestamp: firstRunTime.getTime() - 60000,
+      displayTime: format(new Date(firstRunTime.getTime() - 60000), 'MMM d, HH:mm'),
+      total: 0,
+    };
+    activeTypes.forEach(type => {
+      startPoint[type] = 0;
+    });
+    chartData.push(startPoint);
+
+    // Add each delivered run
+    sortedRuns.forEach((run) => {
+      const runTime = new Date(run.completed_at || run.started_at || run.scheduled_at);
+      const status = (run.status || '').toLowerCase().trim();
+      const message = (run.error_message || '').toLowerCase().trim();
+      const isTargetMetAutoCompleted = (status === 'cancelled' || status === 'canceled') && isTargetCompleteCancelMessage(message);
+      
+      // Calculate ACTUAL delivered quantity
+      let deliveredQty = 0;
+      if (run.status === 'completed' || isTargetMetAutoCompleted) {
+        deliveredQty = run.quantity_to_send;
+      } else if ((run.status === 'started' || run.status === 'failed') && 
+                 run.provider_remains !== null && run.provider_remains !== undefined) {
+        deliveredQty = Math.max(0, run.quantity_to_send - run.provider_remains);
+      }
+
+      // Update cumulative for this type
+      if (run.engagement_type && deliveredQty > 0) {
+        cumulative[run.engagement_type] = (cumulative[run.engagement_type] || 0) + deliveredQty;
+      }
+
+      const total = Object.values(cumulative).reduce((a, b) => a + b, 0);
+
+      // Build data point
+      const dataPoint: Record<string, any> = {
+        time: format(runTime, 'HH:mm'),
+        timestamp: runTime.getTime(),
+        displayTime: format(runTime, 'MMM d, HH:mm'),
+        total,
+        runNumber: run.run_number,
+        deliveredQty,
+        engagementType: run.engagement_type,
+      };
+      
+      // Add cumulative value for each active type
+      activeTypes.forEach(type => {
+        dataPoint[type] = cumulative[type] || 0;
       });
-  }, [runs]);
 
-  const activeTypes = useMemo(() => {
-    return Array.from(new Set(runs.map(r => r.engagement_type)));
-  }, [runs]);
+      chartData.push(dataPoint);
+    });
 
-  if (!runs.length) return null;
+    // Calculate stats
+    const totalScheduled = perType.reduce((sum, t) => sum + t.scheduled, 0);
+    const totalDelivered = perType.reduce((sum, t) => sum + t.delivered, 0);
+    const completedRuns = runs.filter((r) => {
+      const status = (r.status || '').toLowerCase().trim();
+      const message = (r.error_message || '').toLowerCase().trim();
+      const isTargetMetAutoCompleted = (status === 'cancelled' || status === 'canceled') && isTargetCompleteCancelMessage(message);
+      return r.status === 'completed' || isTargetMetAutoCompleted;
+    }).length;
+    const pendingRuns = runs.filter(r => r.status === 'pending').length;
+    const startedRuns = runs.filter(r => r.status === 'started').length;
+
+    return {
+      chartData,
+      stats: { totalScheduled, totalDelivered, completedRuns, pendingRuns, startedRuns, totalRuns: runs.length },
+      activeTypes,
+    };
+  }, [runs, perType]);
+
+  if (chartData.length <= 1) {
+    return null;
+  }
+
+  // Calculate progress percentage
+  const progressPercent = stats ? Math.round((stats.totalDelivered / stats.totalScheduled) * 100) : 0;
 
   return (
-    <Card className="rounded-2xl border border-teal-100 dark:border-white/10 bg-white dark:bg-card shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-      <CardHeader className="border-b border-teal-50 dark:border-white/5 bg-teal-50/30 dark:bg-white/5 px-5 py-4 flex flex-row items-center justify-between gap-4 flex-wrap backdrop-blur-md">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-teal-100 dark:bg-primary/20 ring-1 ring-teal-200 dark:ring-primary/30 shadow-inner">
-            <TrendingUp className="h-4 w-4 text-teal-600 dark:text-primary" />
+    <Card className="border-2 border-border bg-gradient-to-br from-background to-secondary/20 overflow-hidden">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Activity className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <span className="text-foreground">Delivery Progress Chart</span>
+              <p className="text-xs text-muted-foreground font-normal mt-0.5">
+                Real-time • Updates with run edits
+              </p>
+            </div>
           </div>
-          <CardTitle className="text-base font-bold text-slate-900 dark:text-foreground">Delivery Trajectory</CardTitle>
+          <Badge variant="outline" className="font-mono text-lg border-primary text-primary">
+            {progressPercent}% Complete
+          </Badge>
+        </CardTitle>
+
+        {/* Stats Row */}
+        <div className="flex flex-wrap gap-2 mt-3">
+          <Badge className="bg-primary text-primary-foreground font-bold gap-1">
+            <TrendingUp className="h-3 w-3" />
+            {stats?.totalDelivered.toLocaleString()} / {stats?.totalScheduled.toLocaleString()}
+          </Badge>
+          <Badge variant="outline" className="border-border text-foreground gap-1">
+            <CheckCircle2 className="h-3 w-3" />
+            {stats?.completedRuns} / {stats?.totalRuns} runs
+          </Badge>
+          <Badge variant="outline" className="border-border text-foreground gap-1">
+            <Clock className="h-3 w-3" />
+            {stats?.pendingRuns} pending
+          </Badge>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
-          {activeTypes.map(type => {
-            const config = ENGAGEMENT_CONFIG[type];
-            const typeStats = perType.find(t => t.type === type);
-            const delivered = typeStats?.delivered || 0;
-            const scheduled = Math.max(typeStats?.target || 0, typeStats?.scheduled || 0);
-            const percent = scheduled > 0 ? ((delivered / scheduled) * 100).toFixed(0) : '0';
+
+        {/* Per-type breakdown badges - DYNAMIC based on actual services */}
+        <div className="flex flex-wrap gap-2 mt-3">
+          {perType.map(({ type, delivered, scheduled }) => {
+            const config = ENGAGEMENT_CONFIG[type as EngagementType];
+            const percent = scheduled > 0 ? Math.round((delivered / scheduled) * 100) : 0;
             const color = TYPE_COLORS[type] || '#888';
             return (
               <div 
                 key={type}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-background/50 border border-slate-200 dark:border-white/10 shadow-sm"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-secondary/50 border border-border"
               >
                 <div 
-                  className="w-2 h-2 rounded-full shadow-inner" 
+                  className="w-2 h-2 rounded-full" 
                   style={{ backgroundColor: color }}
                 />
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-600 dark:text-muted-foreground">{config?.label || type}</span>
-                <span className="text-[11px] font-black text-slate-900 dark:text-foreground tabular-nums ml-1">
+                
+                <span className="text-xs font-bold text-foreground">
                   {delivered.toLocaleString()}/{scheduled.toLocaleString()}
                 </span>
-                <span className="text-[10px] font-bold text-teal-600 dark:text-primary">({percent}%)</span>
+                <span className="text-[10px] text-muted-foreground">({percent}%)</span>
               </div>
             );
           })}
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="h-[300px] w-full p-4 bg-white/40 dark:bg-transparent">
+
+      <CardContent className="p-3 sm:p-6">
+        {/* Chart - Each service shows its ACTUAL quantity (not stacked) */}
+        <div className="h-[280px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-200 dark:text-border/50" />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
               <XAxis 
                 dataKey="time" 
-                tick={{ fontSize: 11, fontWeight: 600, fill: 'currentColor' }} 
-                className="text-slate-400 dark:text-muted-foreground"
-                tickMargin={10}
-                axisLine={false}
+                stroke="hsl(var(--muted-foreground))" 
+                fontSize={10}
                 tickLine={false}
+                axisLine={false}
               />
               <YAxis 
-                tick={{ fontSize: 11, fontWeight: 600, fill: 'currentColor' }} 
-                className="text-slate-400 dark:text-muted-foreground"
-                tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
-                axisLine={false}
+                stroke="hsl(var(--muted-foreground))" 
+                fontSize={10}
                 tickLine={false}
-                width={40}
+                axisLine={false}
+                tickFormatter={(value) => value >= 1000 ? `${(value/1000).toFixed(1)}K` : value}
               />
-              <Tooltip
-                content={({ active, payload, label }) => {
+              
+              <Tooltip 
+                content={({ active, payload }) => {
                   if (active && payload && payload.length) {
+                    const dataPoint = payload[0]?.payload;
                     return (
-                      <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-card/95 p-3 shadow-xl backdrop-blur-xl">
-                        <p className="mb-2 text-xs font-bold text-slate-500 dark:text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 dark:border-border/50 pb-2">
-                          <Clock className="h-3 w-3" />
-                          {label}
+                      <div className="bg-background/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-xl">
+                        <p className="text-xs text-muted-foreground mb-2 font-mono">
+                          {dataPoint?.displayTime}
                         </p>
-                        <div className="space-y-1.5">
-                          {payload.filter(p => p.value && (p.value as number) > 0).map((entry, index) => {
-                            const type = entry.dataKey as string;
-                            const config = ENGAGEMENT_CONFIG[type];
-                            return (
-                              <div key={index} className="flex items-center justify-between gap-4 text-xs font-bold">
-                                <div className="flex items-center gap-1.5">
-                                  <div 
-                                    className="w-2 h-2 rounded-full shadow-inner" 
-                                    style={{ backgroundColor: TYPE_COLORS[type] || '#888' }}
-                                  />
-                                  <span className="uppercase tracking-wider text-slate-700 dark:text-foreground">{config?.label || type}</span>
-                                </div>
-                                <span className="tabular-nums text-slate-900 dark:text-foreground">{(entry.value as number).toLocaleString()}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {payload.filter(p => p.value && (p.value as number) > 0).map((entry, index) => {
+                          const type = entry.dataKey as string;
+                          const config = ENGAGEMENT_CONFIG[type as EngagementType];
+                          return (
+                            <div key={index} className="flex items-center gap-2 text-sm">
+                              <div 
+                                className="w-2 h-2 rounded-full" 
+                                style={{ backgroundColor: TYPE_COLORS[type] || '#888' }}
+                              />
+                              
+                              <span className="font-bold">{(entry.value as number).toLocaleString()}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   }
                   return null;
                 }}
               />
-              {activeTypes.map((type) => (
+              
+              {/* Separate lines for each engagement type - NO stacking, actual quantities */}
+              {activeTypes.map(type => (
                 <Line
                   key={type}
                   type="monotone"
                   dataKey={type}
                   stroke={TYPE_COLORS[type] || '#888'}
-                  strokeWidth={3}
+                  strokeWidth={2.5}
                   dot={false}
-                  activeDot={{ r: 5, strokeWidth: 0, fill: TYPE_COLORS[type] || '#888' }}
+                  activeDot={{ r: 4, strokeWidth: 2 }}
                 />
               ))}
             </LineChart>
           </ResponsiveContainer>
+        </div>
+
+        {/* Legend - shows only active engagement types */}
+        <div className="flex flex-wrap items-center justify-center gap-4 mt-4 pt-4 border-t border-border">
+          {activeTypes.map(type => {
+            const config = ENGAGEMENT_CONFIG[type as EngagementType];
+            return (
+              <div key={type} className="flex items-center gap-2">
+                <div 
+                  className="w-3 h-3 rounded-full" 
+                  style={{ backgroundColor: TYPE_COLORS[type] || '#888' }}
+                />
+                <span className="text-xs text-muted-foreground">{config?.label || type}</span>
+              </div>
+            );
+          })}
+          {stats && stats.startedRuns > 0 && (
+            <div className="flex items-center gap-2 ml-4 pl-4 border-l border-border">
+              <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span className="text-xs text-muted-foreground">{stats.startedRuns} in progress</span>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

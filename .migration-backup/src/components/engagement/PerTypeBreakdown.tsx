@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Eye, Heart, MessageCircle, Bookmark, Share2, BarChart3, Pause, Play, X, Activity, Repeat2, Repeat, UserPlus, Bell, Clock as ClockIcon } from "lucide-react";
+import { Eye, Heart, MessageCircle, Bookmark, Share2, TrendingUp, Zap, BarChart3, Pause, Play, X } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,87 +15,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const ENGAGEMENT_CONFIG: Record<string, { icon: typeof Eye; label: string; themeClass: string; gradientClass: string; glowClass: string; shadowClass: string }> = {
-  views: { 
-    icon: Eye, label: "Views", 
-    themeClass: "text-cyan-500", 
-    gradientClass: "from-cyan-500/20 to-cyan-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(6,182,212,0.3)]",
-    shadowClass: "shadow-cyan-500/10"
-  },
-  likes: { 
-    icon: Heart, label: "Likes", 
-    themeClass: "text-emerald-500", 
-    gradientClass: "from-emerald-500/20 to-emerald-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(16,185,129,0.3)]",
-    shadowClass: "shadow-emerald-500/10"
-  },
-  comments: { 
-    icon: MessageCircle, label: "Comments", 
-    themeClass: "text-emerald-500", 
-    gradientClass: "from-emerald-500/20 to-emerald-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(16,185,129,0.3)]",
-    shadowClass: "shadow-emerald-500/10"
-  },
-  saves: { 
-    icon: Bookmark, label: "Saves", 
-    themeClass: "text-amber-500", 
-    gradientClass: "from-amber-500/20 to-amber-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(245,158,11,0.3)]",
-    shadowClass: "shadow-amber-500/10"
-  },
-  shares: { 
-    icon: Share2, label: "Shares", 
-    themeClass: "text-violet-400", 
-    gradientClass: "from-violet-500/20 to-violet-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(139,92,246,0.3)]",
-    shadowClass: "shadow-violet-500/10"
-  },
-  reposts: { 
-    icon: Repeat2, label: "Reposts", 
-    themeClass: "text-purple-500", 
-    gradientClass: "from-purple-500/20 to-purple-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(168,85,247,0.3)]",
-    shadowClass: "shadow-purple-500/10"
-  },
-  retweets: {
-    icon: Repeat, label: "Retweets",
-    themeClass: "text-sky-500",
-    gradientClass: "from-sky-500/20 to-sky-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(14,165,233,0.3)]",
-    shadowClass: "shadow-sky-500/10"
-  },
-  followers: {
-    icon: UserPlus, label: "Followers",
-    themeClass: "text-teal-500",
-    gradientClass: "from-teal-500/20 to-teal-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(20,184,166,0.3)]",
-    shadowClass: "shadow-teal-500/10"
-  },
-  subscribers: {
-    icon: Bell, label: "Subscribers",
-    themeClass: "text-red-500",
-    gradientClass: "from-red-500/20 to-red-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(239,68,68,0.3)]",
-    shadowClass: "shadow-red-500/10"
-  },
-  watch_hours: {
-    icon: ClockIcon, label: "Watch Hours",
-    themeClass: "text-orange-500",
-    gradientClass: "from-orange-500/20 to-orange-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(249,115,22,0.3)]",
-    shadowClass: "shadow-orange-500/10"
-  }
+const ENGAGEMENT_CONFIG: Record<string, { icon: typeof Eye; label: string; emoji: string; color: string; bg: string; border: string }> = {
+  views: { icon: Eye, label: "Views", border: "border-cyan-500/40" },
+  likes: { icon: Heart, label: "Likes", border: "border-green-500/40" },
+  comments: { icon: MessageCircle, label: "Comments", border: "border-blue-500/40" },
+  saves: { icon: Bookmark, label: "Saves", border: "border-amber-500/40" },
+  shares: { icon: Share2, label: "Shares", border: "border-violet-500/40" },
+  reposts: { icon: Share2, label: "Reposts", border: "border-indigo-500/40" },
 };
 
+// Helper to get config with dynamic fallback
 const getEngagementConfig = (type: string) => {
   return ENGAGEMENT_CONFIG[type] || {
-    icon: Activity,
+    icon: Eye,
     label: type?.charAt(0).toUpperCase() + type?.slice(1) || "Items",
-    themeClass: "text-slate-500",
-    gradientClass: "from-slate-500/20 to-slate-600/5",
-    glowClass: "shadow-[0_0_15px_rgba(100,116,139,0.3)]",
-    shadowClass: "shadow-slate-500/10"
+    emoji: "📦",
+    color: "text-gray-400",
+    bg: "bg-gray-500/20",
+    border: "border-gray-500/40"
   };
 };
 
@@ -127,23 +66,27 @@ interface PerTypeBreakdownProps {
 
 export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuses, onPauseType, onResumeType, onCancelType }: PerTypeBreakdownProps) {
   const [cancelConfirmType, setCancelConfirmType] = useState<string | null>(null);
-
+  // Filter active types and sort by their appearance in ENGAGEMENT_CONFIG keys, unknown types at end
   const knownTypes = Object.keys(ENGAGEMENT_CONFIG);
   const activeTypes = types
     .filter(t => t.target > 0)
     .sort((a, b) => {
       const aIndex = knownTypes.indexOf(a.type);
       const bIndex = knownTypes.indexOf(b.type);
+      // If not found, put at end
       const aPos = aIndex === -1 ? 999 : aIndex;
       const bPos = bIndex === -1 ? 999 : bIndex;
       return aPos - bPos;
     });
 
+  // Compute cumulative history for each type - NO TARGET CAPPING
+  // Sum all runs (except failed) for real scheduled total
   const typeHistories = activeTypes.map(typeData => {
     const typeRuns = allRuns
       .filter(r => r.engagement_type === typeData.type)
       .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
     
+    // Calculate cumulative scheduled (NO capping, exclude failed)
     let cumulativeScheduled = 0;
     const history = typeRuns.map(run => {
       if (run.status !== 'failed') {
@@ -167,41 +110,43 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
     };
   });
 
+  // Grand totals - use scheduled as dynamic target when it exceeds original
   const grandScheduled = typeHistories.reduce((sum, t) => {
     const lastRun = t.history[t.history.length - 1];
     return sum + (lastRun?.cumulativeScheduled || 0);
   }, 0);
   const grandOriginalTarget = activeTypes.reduce((sum, t) => sum + t.target, 0);
-  const grandTarget = Math.max(grandOriginalTarget, grandScheduled);
+  const grandTarget = Math.max(grandOriginalTarget, grandScheduled); // Dynamic target
   const grandDelivered = activeTypes.reduce((sum, t) => sum + t.delivered, 0);
   const grandProgress = grandTarget > 0 ? (grandDelivered / grandTarget) * 100 : 0;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-card to-muted/30 shadow-[0_8px_30px_rgb(0,0,0,0.08)] overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-white/5 bg-black/5 dark:bg-white/5 backdrop-blur-md">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-foreground/10 ring-1 ring-foreground/20 shadow-inner">
-              <BarChart3 className="h-4 w-4 text-foreground" />
-            </div>
-            <span className="font-bold text-foreground tracking-wide bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Live Engagement Breakdown</span>
+    <div className="glass-card rounded-xl overflow-hidden">
+      {/* Header with Grand Total */}
+      <div className="p-3 sm:p-4 border-b border-border">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Zap className="h-5 w-5 text-foreground" />
+            <span className="font-bold text-base sm:text-lg text-foreground flex items-center gap-1.5"><BarChart3 className="h-4.5 w-4.5 text-primary" /> Live Engagement Stats</span>
+            <Badge variant="outline" className="text-muted-foreground border-border text-xs">
+              Real-time sync
+            </Badge>
           </div>
-          <div className="flex items-center gap-3 bg-background/50 border border-white/10 px-3 py-1.5 rounded-lg shadow-inner">
-            <span className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Aggregate</span>
-            <span className="font-black text-base text-foreground tabular-nums drop-shadow-sm">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-xs sm:text-sm text-muted-foreground">Grand Total:</span>
+            <span className="font-bold text-lg sm:text-xl text-foreground">
               {grandDelivered.toLocaleString()} / {grandTarget.toLocaleString()}
             </span>
-            <Badge variant="secondary" className="font-mono font-bold text-xs bg-primary/20 text-primary border-primary/30">
-              {grandProgress.toFixed(1)}%
+            <Badge className="bg-foreground/10 text-foreground border-foreground/30">
+              {grandProgress.toFixed(0)}%
             </Badge>
           </div>
         </div>
       </div>
 
-      {/* Cards Grid */}
-      <div className="p-5 bg-card/40 backdrop-blur-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      {/* Quick Summary Cards - Dynamic Types */}
+      <div className="p-4 border-b border-border bg-secondary/20">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {activeTypes.map(typeData => {
             const config = getEngagementConfig(typeData.type);
             const Icon = config.icon;
@@ -209,6 +154,7 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
             const delivered = typeData.delivered || 0;
             const scheduled = typeData.scheduled || 0;
             
+            // Dynamic target = max of original and scheduled (when runs edited to exceed)
             const dynamicTarget = Math.max(originalTarget, scheduled);
             const progress = dynamicTarget > 0 ? (delivered / dynamicTarget) * 100 : 0;
 
@@ -217,16 +163,15 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
             const isPaused = itemStatus === 'paused';
             const isCancelled = itemStatus === 'cancelled';
             const isCompleted = itemStatus === 'completed';
-            const isFailed = itemStatus === 'failed';
-            const isTerminal = isCancelled || isCompleted || isFailed;
+            const isTerminal = isCancelled || itemStatus === 'completed' || itemStatus === 'failed';
 
             return (
               <div 
                 key={typeData.type} 
-                className={`group relative flex flex-col p-4 rounded-xl border border-white/10 shadow-lg ${config.shadowClass} overflow-hidden transition-all duration-300 isolate ${
-                  isPaused ? 'opacity-80 grayscale-[40%]' : ''
-                } ${isCancelled ? 'opacity-60 grayscale-[80%]' : ''} ${
-                  onTypeClick ? 'cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:shadow-[0_15px_30px_-5px_rgba(0,0,0,0.2)]' : ''
+                className={`relative p-3 rounded-xl ${config.bg} border ${config.border} transition-all duration-300 ${
+                  isPaused ? 'ring-1 ring-amber-500/30 grayscale-[30%]' : ''
+                } ${isCancelled ? 'ring-1 ring-destructive/30 grayscale-[50%]' : ''} ${
+                  onTypeClick ? 'cursor-pointer hover:scale-[1.02] hover:shadow-lg' : ''
                 }`}
                 onClick={() => onTypeClick?.(typeData.type)}
                 role={onTypeClick ? "button" : undefined}
@@ -238,85 +183,68 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
                   }
                 }}
               >
-                {/* 3D Glass Background */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${config.gradientClass} mix-blend-overlay opacity-50 z-0`}></div>
-                <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent z-0"></div>
-                <div className="absolute inset-0 bg-card/60 backdrop-blur-md z-0"></div>
-                
-                {/* Content */}
-                <div className="relative z-10 flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg bg-background/50 ring-1 ring-white/10 ${config.glowClass}`}>
-                      <Icon className={`h-4 w-4 ${config.themeClass}`} />
-                    </div>
-                    <span className={`text-xs uppercase font-extrabold tracking-wider ${config.themeClass} drop-shadow-sm`}>{config.label}</span>
+                {/* Status overlay stripe */}
+                {isPaused && (
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 rounded-t-xl" />
+                )}
+                {isCancelled && (
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-destructive via-red-400 to-destructive rounded-t-xl" />
+                )}
+                {isCompleted && (
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500 rounded-t-xl" />
+                )}
+
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Icon className={`h-4 w-4 ${config.color}`} />
+                    <span className={`text-xs uppercase font-bold tracking-wider ${config.color}`}>{config.label}</span>
                   </div>
                   {isPaused && (
-                    <Badge variant="outline" className="text-[9px] font-bold uppercase px-1.5 py-0 h-4 border-amber-500/50 text-amber-500 bg-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.2)]">Paused</Badge>
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20">
+                      <Pause className="h-2.5 w-2.5" /> PAUSED
+                    </span>
                   )}
                   {isCancelled && (
-                    <Badge variant="outline" className="text-[9px] font-bold uppercase px-1.5 py-0 h-4 border-destructive/50 text-destructive bg-destructive/10 shadow-[0_0_10px_rgba(var(--destructive),0.2)]">Stopped</Badge>
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-md border border-destructive/20">
+                      <X className="h-2.5 w-2.5" /> STOPPED
+                    </span>
                   )}
                   {isCompleted && (
-                    <Badge variant="outline" className="text-[9px] font-bold uppercase px-1.5 py-0 h-4 border-emerald-500/50 text-emerald-500 bg-emerald-500/10 shadow-[0_0_10px_rgba(16,185,129,0.2)]">Done</Badge>
+                    <span className="flex items-center gap-1 text-[10px] font-black text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-md border border-blue-500/20 uppercase tracking-wider">
+                      ✓ Completed
+                    </span>
                   )}
                 </div>
-                
-                <div className="relative z-10 flex flex-col gap-1 mt-auto">
-                  <div className="flex items-baseline gap-1.5 drop-shadow-md">
-                    <span className="text-2xl font-black tabular-nums text-foreground">
-                      {delivered.toLocaleString()}
-                    </span>
-                    <span className="text-xs font-semibold text-muted-foreground">
-                      / {dynamicTarget.toLocaleString()}
-                    </span>
-                  </div>
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-xl font-bold tabular-nums ${config.color}`}>{delivered.toLocaleString()}</span>
+                  <span className="text-xs text-muted-foreground">/ {dynamicTarget.toLocaleString()}</span>
                 </div>
+                <Progress value={Math.min(progress, 100)} className="h-1.5 mt-2" />
                 
-                {/* Luminous Progress Bar */}
-                <div className="relative z-10 h-2 mt-3 w-full bg-background/80 rounded-full overflow-hidden shadow-inner border border-white/5">
-                  <div 
-                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ease-out"
-                    style={{ 
-                      width: `${Math.min(progress, 100)}%`,
-                      backgroundColor: 'currentColor'
-                    }}
-                  >
-                    <div className={`absolute inset-0 opacity-100 ${config.themeClass} bg-current`}></div>
-                    <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.5)_50%,transparent_100%)] animate-[shimmer_2s_infinite]"></div>
-                  </div>
-                </div>
-                
-                {/* Actions */}
+                {/* Sleek inline action buttons */}
                 {itemInfo && !isTerminal && (
-                  <div className="relative z-10 flex items-center gap-1.5 mt-4 pt-3 border-t border-white/10" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1 mt-2.5 pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
                     {isPaused ? (
-                      <Button 
-                        size="sm" 
-                        variant="secondary"
-                        className="flex-1 h-8 text-[10px] uppercase font-bold tracking-wider gap-1.5 bg-background/80 hover:bg-background border border-white/5 shadow-sm hover:shadow-md transition-all"
+                      <button 
+                        className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 transition-colors"
                         onClick={() => onResumeType?.(itemInfo.id)}
                       >
-                        <Play className="h-3 w-3 text-emerald-500" /> Resume
-                      </Button>
+                        <Play className="h-3 w-3" /> Resume
+                      </button>
                     ) : (
-                      <Button 
-                        size="sm" 
-                        variant="secondary"
-                        className="flex-1 h-8 text-[10px] uppercase font-bold tracking-wider gap-1.5 bg-background/80 hover:bg-background border border-white/5 shadow-sm hover:shadow-md transition-all"
+                      <button 
+                        className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1 rounded-md bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-colors"
                         onClick={() => onPauseType?.(itemInfo.id)}
                       >
-                        <Pause className="h-3 w-3 text-amber-500" /> Pause
-                      </Button>
+                        <Pause className="h-3 w-3" /> Pause
+                      </button>
                     )}
-                    <Button 
-                      size="sm" 
-                      variant="destructive"
-                      className="h-8 w-8 p-0 bg-background/80 hover:bg-destructive/90 text-destructive hover:text-white border border-white/5 shadow-sm hover:shadow-md transition-all"
+                    <button 
+                      className="flex items-center justify-center gap-1 text-[11px] font-semibold py-1 px-2.5 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
                       onClick={() => setCancelConfirmType(typeData.type)}
                     >
-                      <X className="h-4 w-4" />
-                    </Button>
+                      <X className="h-3 w-3" />
+                    </button>
                   </div>
                 )}
               </div>
@@ -325,23 +253,24 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
         </div>
       </div>
 
+      {/* Cancel Confirmation Dialog */}
       <AlertDialog open={!!cancelConfirmType} onOpenChange={(open) => !open && setCancelConfirmType(null)}>
-        <AlertDialogContent className="border-white/10 bg-card/95 backdrop-blur-xl shadow-2xl">
+        <AlertDialogContent className="border-destructive/20 bg-background/95 backdrop-blur-xl">
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <div className="p-1.5 rounded-full bg-destructive/20 text-destructive ring-1 ring-destructive/30">
-                <X className="h-4 w-4" />
-              </div>
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-destructive/10 border border-destructive/20 mx-auto mb-2">
+              <X className="h-6 w-6 text-destructive" />
+            </div>
+            <AlertDialogTitle className="text-center">
               Cancel {cancelConfirmType ? getEngagementConfig(cancelConfirmType).label : ''}?
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              All pending runs for this type will be permanently stopped. They will not be sent to the provider. Any runs already completed will remain.
+            <AlertDialogDescription className="text-center">
+              All pending runs will be permanently stopped and <strong>never sent to the provider</strong>. Completed deliveries remain untouched.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="bg-background/50 border-white/10 hover:bg-background">Keep Active</AlertDialogCancel>
+          <AlertDialogFooter className="sm:justify-center gap-2">
+            <AlertDialogCancel className="sm:w-32">Keep Active</AlertDialogCancel>
             <AlertDialogAction 
-              className="bg-destructive text-destructive-foreground font-bold shadow-lg shadow-destructive/20 hover:bg-destructive/90 hover:scale-105 active:scale-95 transition-all"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 sm:w-32"
               onClick={() => {
                 if (cancelConfirmType && itemStatuses?.[cancelConfirmType]) {
                   onCancelType?.(itemStatuses[cancelConfirmType].id);
