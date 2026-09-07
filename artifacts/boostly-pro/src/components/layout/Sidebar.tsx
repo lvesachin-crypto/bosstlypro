@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import {
   LayoutDashboard, Package, Settings, LifeBuoy, Shield, LogOut,
   Rocket, Sparkles, X, Server, Boxes, Brain, Send, Crown, ChevronRight,
@@ -9,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import logo from '@/assets/logo.png';
+import { preloadRoute, preloadSidebarRoutes } from '@/lib/routePreload';
 
 interface SidebarProps { onClose?: () => void; }
 
@@ -45,6 +47,20 @@ export function Sidebar({ onClose }: SidebarProps) {
   const { isAdmin, signOut, profile, user } = useAuth();
   const displayName = profile?.full_name || profile?.fullName || profile?.email?.split('@')[0] || 'User';
 
+  useEffect(() => {
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const timeoutId = window.setTimeout(preloadSidebarRoutes, 800);
+    const idleId = idleWindow.requestIdleCallback?.(preloadSidebarRoutes, { timeout: 1500 });
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (idleId !== undefined) idleWindow.cancelIdleCallback?.(idleId);
+    };
+  }, []);
+
   const { data: providerStats } = useQuery({
     queryKey: ['sidebar-provider-balance', user?.id],
     enabled: !!user?.id,
@@ -78,6 +94,9 @@ export function Sidebar({ onClose }: SidebarProps) {
         key={item.path}
         to={item.path}
         onClick={onClose}
+        onMouseEnter={() => preloadRoute(item.path)}
+        onFocus={() => preloadRoute(item.path)}
+        onTouchStart={() => preloadRoute(item.path)}
         className={cn(
           "group flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold transition-all duration-200 outline-none",
           isActive 
