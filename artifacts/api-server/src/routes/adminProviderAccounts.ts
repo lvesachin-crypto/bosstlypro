@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { clerkClient } from "@clerk/express";
 import { pool } from "@workspace/db";
 import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+import { resolveIdentity } from "../lib/identity";
 import { decryptProviderCredential } from "../lib/providerCredentials";
 
 const router: IRouter = Router();
@@ -20,21 +20,13 @@ const requestSchema = z.discriminatedUnion("op", [
 ]);
 
 async function requireAdmin(req: AuthenticatedRequest): Promise<string> {
-  const clerkUser = await clerkClient.users.getUser(req.userId);
-  if (!clerkUser.externalId) throw new Error("Your account is not linked to legacy data.");
-  const result = await pool.query<{ is_admin: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1 FROM lovable_legacy.user_roles
-        WHERE user_id=$1::uuid AND role::text='admin'
-     ) AS is_admin`,
-    [clerkUser.externalId],
-  );
-  if (!result.rows[0]?.is_admin) {
+  const identity = await resolveIdentity(req.userId);
+  if (!identity.isAdmin) {
     const error = new Error("Administrator access is required.");
     (error as Error & { status?: number }).status = 403;
     throw error;
   }
-  return clerkUser.externalId;
+  return identity.legacyId;
 }
 
 function safePanelUrl(value: string): string {

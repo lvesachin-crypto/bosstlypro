@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
-import { clerkClient } from "@clerk/express";
 import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+import { resolveIdentity } from "../lib/identity";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 router.use(requireAuth);
@@ -50,36 +51,67 @@ function quote(name: string): string {
   return `"${name}"`;
 }
 
-async function identity(req: AuthenticatedRequest) {
-  const cached = identityCache.get(req.userId);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const value = (async () => {
-    const user = await clerkClient.users.getUser(req.userId);
-    const legacyId = user.externalId;
-    if (!legacyId) throw new Error("Your account is not linked to legacy data.");
-    const role = await pool.query<{ role: string }>(
-      "SELECT role::text AS role FROM lovable_legacy.user_roles WHERE user_id = $1::uuid LIMIT 1",
-      [legacyId],
-    );
-    return { legacyId, isAdmin: role.rows[0]?.role === "admin" };
-  })().catch((error) => {
-    identityCache.delete(req.userId);
-    throw error;
-  });
-  identityCache.set(req.userId, { expiresAt: Date.now() + 60_000, value });
-  return value;
+function identity(req: AuthenticatedRequest) {
+  return resolveIdentity(req.userId);
 }
 
-const identityCache = new Map<string, {
-  expiresAt: number;
-  value: Promise<{ legacyId: string; isAdmin: boolean }>;
-}>();
+// Anything slower than this is logged with the table name so regressions
+// (a missing index, an oversized page) show up in the server logs by table.
+const SLOW_QUERY_MS = 250;
 
 function sanitize(row: Record<string, unknown>): Record<string, unknown> {
   for (const field of Object.keys(row)) {
     if (forbiddenFields.has(field) || field.includes("api_key") || field.includes("secret")) delete row[field];
   }
   return row;
+}
+
+/**
+ * Column list requested for a nested relation in a PostgREST-style select
+ * string, e.g. "items:engagement_order_items(id, status, runs:organic_run_schedule(status))".
+ * Returns null when the relation is absent or asks for every column.
+ */
+function nestedColumns(select: string, relation: string): string[] | null {
+  const start = select.indexOf(`${relation}(`);
+  if (start < 0) return null;
+  let depth = 0;
+  let end = -1;
+  for (let i = start + relation.length; i < select.length; i++) {
+    const ch = select[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end < 0) return null;
+  const inner = select.slice(start + relation.length + 1, end);
+  const parts: string[] = [];
+  let buffer = "";
+  depth = 0;
+  for (const ch of inner) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (ch === "," && depth === 0) { parts.push(buffer); buffer = ""; } else buffer += ch;
+  }
+  parts.push(buffer);
+  const columns: string[] = [];
+  for (const raw of parts) {
+    const part = raw.trim();
+    if (!part || part.includes("(")) continue; // nested relation: hydrated separately
+    const column = (part.includes(":") ? part.slice(part.lastIndexOf(":") + 1) : part).trim();
+    if (column === "*") return null;
+    if (!identifier.test(column)) throw new Error("Invalid legacy query column");
+    columns.push(column);
+  }
+  return columns.length ? columns : null;
+}
+
+// Only the requested columns leave the database; the join keys are always
+// included because hydration needs them to nest the rows.
+function projection(columns: string[] | null, required: string[]): string {
+  if (!columns) return "*";
+  return [...new Set([...required, ...columns])].map(quote).join(", ");
 }
 
 async function hydrate(table: string, rows: Record<string, unknown>[], select = ""): Promise<void> {
@@ -94,13 +126,18 @@ async function hydrate(table: string, rows: Record<string, unknown>[], select = 
   }
   if (table === "engagement_orders" && select.includes("engagement_order_items")) {
     const ids = rows.map((row) => row.id);
+    const itemColumns = projection(nestedColumns(select, "engagement_order_items"), ["id", "engagement_order_id"]);
     const items = await pool.query<Record<string, unknown>>(
-      "SELECT * FROM lovable_legacy.engagement_order_items WHERE engagement_order_id = ANY($1::uuid[])",
+      `SELECT ${itemColumns} FROM lovable_legacy.engagement_order_items WHERE engagement_order_id = ANY($1::uuid[])`,
       [ids],
     );
     const itemIds = items.rows.map((item) => item.id);
+    const runColumns = projection(nestedColumns(select, "organic_run_schedule"), ["engagement_order_item_id"]);
     const runs = itemIds.length && select.includes("organic_run_schedule")
-      ? await pool.query<Record<string, unknown>>("SELECT * FROM lovable_legacy.organic_run_schedule WHERE engagement_order_item_id = ANY($1::uuid[])", [itemIds])
+      ? await pool.query<Record<string, unknown>>(
+        `SELECT ${runColumns} FROM lovable_legacy.organic_run_schedule WHERE engagement_order_item_id = ANY($1::uuid[]) ORDER BY engagement_order_item_id, run_number`,
+        [itemIds],
+      )
       : { rows: [] as Record<string, unknown>[] };
     const runsByItem = new Map<string, Record<string, unknown>[]>();
     for (const run of runs.rows) {
@@ -199,9 +236,18 @@ router.post("/legacy/query", async (req, res): Promise<void> => {
     const take = query.range ? query.range.to - query.range.from + 1 : (query.limit ?? 200);
     sql += ` LIMIT ${take}`;
     if (query.range) sql += ` OFFSET ${query.range.from}`;
+    const startedAt = performance.now();
     const result = await pool.query<Record<string, unknown>>(sql, values);
+    const queryMs = performance.now() - startedAt;
     const rows = result.rows.map(sanitize);
     await hydrate(query.table, rows, query.select);
+    const totalMs = performance.now() - startedAt;
+    if (totalMs > SLOW_QUERY_MS) {
+      logger.warn(
+        { table: query.table, rows: rows.length, queryMs: Math.round(queryMs), totalMs: Math.round(totalMs) },
+        "slow legacy query",
+      );
+    }
     res.json({ data: rows, error: null });
   } catch (error) {
     console.warn("[legacy-query]", parsed.data.table, error instanceof Error ? error.message : "Legacy query failed");

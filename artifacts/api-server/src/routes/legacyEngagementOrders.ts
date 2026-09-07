@@ -1,8 +1,8 @@
-import { clerkClient } from "@clerk/express";
 import { pool } from "@workspace/db";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+import { resolveLegacyId } from "../lib/identity";
 
 const router: IRouter = Router();
 router.use(requireAuth);
@@ -37,10 +37,8 @@ const orderSchema = z.object({
   engagements: z.array(engagementSchema).min(1).max(30),
 });
 
-async function getLegacyId(req: AuthenticatedRequest): Promise<string> {
-  const user = await clerkClient.users.getUser(req.userId);
-  if (!user.externalId) throw new Error("Your account is not linked to imported data.");
-  return user.externalId;
+function getLegacyId(req: AuthenticatedRequest): Promise<string> {
+  return resolveLegacyId(req.userId);
 }
 
 router.post("/functions/process-engagement-order", async (req, res): Promise<void> => {

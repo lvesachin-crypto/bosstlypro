@@ -1,17 +1,15 @@
 import { Router, type IRouter } from "express";
-import { clerkClient } from "@clerk/express";
 import { pool } from "@workspace/db";
 import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+import { resolveLegacyId } from "../lib/identity";
 import { decryptProviderCredential, encryptProviderCredential } from "../lib/providerCredentials";
 
 const router: IRouter = Router();
 router.use(requireAuth);
 
-async function legacyId(req: AuthenticatedRequest): Promise<string> {
-  const id = (await clerkClient.users.getUser(req.userId)).externalId;
-  if (!id) throw new Error("Your account is not linked to legacy data.");
-  return id;
+function legacyId(req: AuthenticatedRequest): Promise<string> {
+  return resolveLegacyId(req.userId);
 }
 function panelUrl(value: string): string {
   const url = new URL(value);

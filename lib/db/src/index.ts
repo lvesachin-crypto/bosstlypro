@@ -16,13 +16,25 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: positivePoolSize(process.env.DB_POOL_MAX, 15),
-  connectionTimeoutMillis: 10_000,
-  idleTimeoutMillis: 30_000,
-  maxUses: 7_500,
-});
+function createPool(max: number): pg.Pool {
+  return new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    maxUses: 7_500,
+  });
+}
+
+/** Pool for interactive web requests. */
+export const pool = createPool(positivePoolSize(process.env.DB_POOL_MAX, 15));
+
+/**
+ * Separate, smaller pool for background workers so a busy dispatch/status
+ * tick can never starve user-facing requests of database connections.
+ */
+export const workerPool = createPool(positivePoolSize(process.env.WORKER_POOL_MAX, 6));
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

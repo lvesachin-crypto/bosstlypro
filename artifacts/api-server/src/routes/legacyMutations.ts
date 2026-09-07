@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { clerkClient } from "@clerk/express";
 import { pool } from "@workspace/db";
 import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
+import { resolveIdentity, resolveLegacyId } from "../lib/identity";
 
 const router: IRouter = Router(); router.use(requireAuth);
 const schema = z.object({ table: z.enum(["user_provider_accounts", "user_services", "user_bundles", "user_bundle_items", "user_bundle_item_providers", "subscriptions", "subscription_requests", "engagement_orders", "engagement_order_items", "organic_run_schedule"]), action: z.enum(["insert", "update", "delete", "upsert"]), values: z.any().optional(), filters: z.array(z.object({ operator: z.enum(["eq", "neq", "in", "is", "notIn", "lt"]).optional(), column: z.string(), value: z.any() })).default([]) });
@@ -11,17 +11,11 @@ const columns: Record<string, string[]> = {
   user_bundles: ["name", "description", "platform"], user_bundle_items: ["engagement_type", "quantity"],
   user_bundle_item_providers: ["enabled", "provider_service_id", "priority"],
 };
-async function user(req: AuthenticatedRequest): Promise<string> {
-  const id = (await clerkClient.users.getUser(req.userId)).externalId;
-  if (!id) throw new Error("Your account is not linked to legacy data."); return id;
+function user(req: AuthenticatedRequest): Promise<string> {
+  return resolveLegacyId(req.userId);
 }
-async function identity(req: AuthenticatedRequest): Promise<{ legacyId: string; isAdmin: boolean }> {
-  const legacyId = await user(req);
-  const role = await pool.query<{ role: string }>(
-    "SELECT role::text AS role FROM lovable_legacy.user_roles WHERE user_id=$1::uuid LIMIT 1",
-    [legacyId],
-  );
-  return { legacyId, isAdmin: role.rows[0]?.role === "admin" };
+function identity(req: AuthenticatedRequest): Promise<{ legacyId: string; isAdmin: boolean }> {
+  return resolveIdentity(req.userId);
 }
 function uuidFilter(filters: { column: string; value?: unknown }[]): string | undefined { const id = filters.find((f) => f.column === "id")?.value; return typeof id === "string" ? id : undefined; }
 const uuid = z.string().uuid();

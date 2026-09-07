@@ -1,8 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, Package, Settings, LifeBuoy, Shield, LogOut,
-  Rocket, Sparkles, X, Server, Boxes, Brain, Send, Crown, ChevronRight,
+  Rocket, Sparkles, X, Server, Boxes, Brain, Send, Crown, ChevronRight, Loader2,
   Wallet
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -47,6 +47,14 @@ export function Sidebar({ onClose }: SidebarProps) {
   const { isAdmin, signOut, profile, user } = useAuth();
   const displayName = profile?.full_name || profile?.fullName || profile?.email?.split('@')[0] || 'User';
 
+  // Router navigations are transitions: while a page chunk or its data is
+  // still arriving nothing on screen changes, which reads as an ignored click.
+  // Highlight the tapped item at once and keep it lit until the route lands.
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  useEffect(() => {
+    setPendingPath(null);
+  }, [location.pathname]);
+
   useEffect(() => {
     const idleWindow = window as Window & {
       requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
@@ -88,29 +96,40 @@ export function Sidebar({ onClose }: SidebarProps) {
   const renderItem = (item: any) => {
     const isActive = location.pathname === item.path
       || (item.path !== '/dashboard' && location.pathname.startsWith(item.path + '/'));
-      
+    const isPending = !isActive && pendingPath === item.path;
+
     return (
       <Link
         key={item.path}
         to={item.path}
-        onClick={onClose}
+        onClick={() => {
+          if (!isActive) setPendingPath(item.path);
+          onClose?.();
+        }}
         onMouseEnter={() => preloadRoute(item.path)}
         onFocus={() => preloadRoute(item.path)}
         onTouchStart={() => preloadRoute(item.path)}
+        aria-busy={isPending || undefined}
         className={cn(
           "group flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold transition-all duration-200 outline-none",
-          isActive 
-            ? "bg-blue-600/10 text-[#141414] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]" 
-            : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#141414]"
+          isActive
+            ? "bg-blue-600/10 text-[#141414] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.25)]"
+            : isPending
+              ? "bg-[#F3F4F6] text-[#141414]"
+              : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#141414]"
         )}
       >
-        <item.icon
-          className={cn(
-            "w-[16px] h-[16px] shrink-0 transition-colors",
-            isActive ? "text-blue-600" : "text-[#6B7280] group-hover:text-[#141414]"
-          )}
-          strokeWidth={2.5}
-        />
+        {isPending ? (
+          <Loader2 className="w-[16px] h-[16px] shrink-0 animate-spin text-blue-600" strokeWidth={2.5} />
+        ) : (
+          <item.icon
+            className={cn(
+              "w-[16px] h-[16px] shrink-0 transition-colors",
+              isActive ? "text-blue-600" : "text-[#6B7280] group-hover:text-[#141414]"
+            )}
+            strokeWidth={2.5}
+          />
+        )}
         <span className="flex-1 truncate">{item.label}</span>
         {item.tag && (
           <span

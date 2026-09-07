@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { pool } from "@workspace/db";
+// Background ticks use their own small pool so they never hold connections
+// that interactive requests are waiting for.
+import { workerPool as pool } from "@workspace/db";
 import { decryptProviderCredential } from "../lib/providerCredentials";
 import { logger } from "../lib/logger";
 

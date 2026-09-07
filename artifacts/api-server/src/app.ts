@@ -1,4 +1,5 @@
 import express, { type Express } from "express";
+import compression from "compression";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
@@ -28,6 +29,9 @@ app.use(
   }),
 );
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+// JSON payloads for the order and schedule pages run to hundreds of kilobytes;
+// mounted after the Clerk proxy so upstream responses are passed through untouched.
+app.use(compression({ threshold: 1024 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(clerkMiddleware((req) => ({

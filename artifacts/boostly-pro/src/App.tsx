@@ -84,6 +84,15 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+// Without pinned versions Clerk resolves "@6" / "@1" through two extra
+// redirect round trips on every page load before any script byte arrives.
+// These are the versions the redirects currently resolve to; bump them
+// together whenever @clerk/react is upgraded (see replit.md).
+const clerkPinnedVersions = {
+  __internal_clerkJSVersion: "6.31.0",
+  __internal_clerkUIVersion: "1.32.1",
+} as Record<string, string>;
+
 function ClerkProviderWithRoutes({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   return (
@@ -95,6 +104,7 @@ function ClerkProviderWithRoutes({ children }: { children: React.ReactNode }) {
       signUpUrl={`${basePath}/sign-up`}
       routerPush={(to) => navigate(to)}
       routerReplace={(to) => navigate(to, { replace: true })}
+      {...clerkPinnedVersions}
     >
       <ClerkQueryClientCacheInvalidator />
       {children}

@@ -51,7 +51,6 @@ const Index = () => {
       />
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap');
         .bp-serif { font-family:'Fraunces', 'Times New Roman', serif; font-weight:600; letter-spacing:-0.02em; line-height:1.02; }
         @keyframes bp-pulse { 0%,100%{opacity:.6;transform:scale(1)} 50%{opacity:1;transform:scale(1.15)} }
         .bp-dot { animation: bp-pulse 2.2s ease-in-out infinite; }

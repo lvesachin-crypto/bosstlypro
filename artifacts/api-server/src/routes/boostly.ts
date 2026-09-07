@@ -77,6 +77,20 @@ async function ensureAccount(id: string): Promise<string | null> {
   return value;
 }
 
+// Lightweight identity payload for the auth provider: what every page needs
+// before it can render, without the dashboard aggregates.
+router.get("/session", async (req, res): Promise<void> => {
+  const id = userId(req as AuthenticatedRequest);
+  const legacyId = await ensureAccount(id);
+  const [[profile], [wallet], [role]] = await Promise.all([
+    db.select().from(profilesTable).where(eq(profilesTable.userId, id)).limit(1),
+    db.select().from(walletsTable).where(eq(walletsTable.userId, id)).limit(1),
+    db.select().from(userRolesTable).where(eq(userRolesTable.userId, id)).limit(1),
+  ]);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ profile, wallet, role: role?.role ?? "user", legacyId });
+});
+
 router.get("/dashboard", async (req, res): Promise<void> => {
   const id = userId(req as AuthenticatedRequest);
   const legacyId = await ensureAccount(id);

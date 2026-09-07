@@ -15,13 +15,23 @@ localPort = 21544
 run = "pnpm --filter @workspace/boostly-pro run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/boostly-pro", "run", "build" ]
-serve = "static"
-publicDir = "artifacts/boostly-pro/dist/public"
 
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+[services.production.build]
+args = [ "pnpm", "--filter", "@workspace/boostly-pro", "run", "build" ]
+
+[services.production.build.env]
+NODE_ENV = "production"
+BASE_PATH = "/"
+
+[services.production.run]
+args = [ "node", "artifacts/boostly-pro/server/serve.mjs" ]
+
+[services.production.run.env]
+PORT = "21544"
+NODE_ENV = "production"
+
+[services.production.health.startup]
+path = "/"
 
 [services.env]
 PORT = "21544"

@@ -56,6 +56,23 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Keep the large, rarely-changing framework code in its own chunks so
+        // returning visitors only re-download the app code after a release.
+        // Only eagerly-loaded dependencies are named here; everything else
+        // keeps Rollup's route-based splitting.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom)[\\/]/.test(id)) {
+            return 'vendor-react';
+          }
+          if (/[\\/]node_modules[\\/]@clerk[\\/]/.test(id)) return 'vendor-clerk';
+          if (/[\\/]node_modules[\\/]@tanstack[\\/]/.test(id)) return 'vendor-query';
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,

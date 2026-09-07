@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, ReactNode, useEffect, useMemo, useState, useCallback } from 'react';
 import { useUser, useClerk, useSession } from '@clerk/react';
 import { api } from '@/lib/api';
 
@@ -37,6 +37,57 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Display-only fields remembered between page loads so the dashboard shell
+// can render before the session round trip completes. Deliberately excludes
+// credentials (api_key) and balances; it lives in sessionStorage (per tab,
+// gone when the tab closes), is keyed by user id, and is cleared on sign-out.
+type SessionSnapshot = {
+  profile: Pick<Profile, 'id' | 'userId' | 'email' | 'full_name' | 'currency'> | null;
+  role: AppRole;
+};
+const SNAPSHOT_KEY = 'boostly.session.v2';
+
+function toSnapshot(profile: Profile | null, role: AppRole): SessionSnapshot {
+  return {
+    profile: profile
+      ? { id: profile.id, userId: profile.userId, email: profile.email, full_name: profile.full_name ?? null, currency: profile.currency }
+      : null,
+    role,
+  };
+}
+
+function readSnapshot(userId: string): SessionSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { userId?: string; data?: SessionSnapshot };
+    return parsed.userId === userId && parsed.data ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot(userId: string, data: SessionSnapshot): void {
+  try {
+    window.sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ userId, data }));
+  } catch {
+    // Storage may be full or disabled; the snapshot is only an accelerator.
+  }
+}
+
+function clearSnapshot(): void {
+  try {
+    window.sessionStorage.removeItem(SNAPSHOT_KEY);
+    window.localStorage.removeItem('boostly.session.v1'); // pre-release key
+  } catch {
+    // ignore
+  }
+}
+
+function normalizeProfile(profile: any): Profile {
+  return { ...profile, full_name: profile.full_name ?? profile.fullName ?? null };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const { signOut: clerkSignOut, openSignIn, openSignUp } = useClerk();
@@ -47,90 +98,116 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole | null>(null);
   const [dbLoading, setDbLoading] = useState(true);
 
-  // We map clerk user to the shape the app expects
-  const user = clerkUser ? {
-    id: clerkUser.id,
-    email: clerkUser.primaryEmailAddress?.emailAddress
-  } : null;
+  const clerkUserId = clerkUser?.id ?? null;
+  const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress;
 
-  const fetchUserData = useCallback(async () => {
+  // Stable identity: consumers key effects on this object, so it must only
+  // change when the underlying user actually changes.
+  const user = useMemo(
+    () => (clerkUserId ? { id: clerkUserId, email: clerkEmail } : null),
+    [clerkUserId, clerkEmail],
+  );
+
+  const fetchUserData = useCallback(async (userId: string, isStale: () => boolean) => {
     try {
-      const data = await api.getDashboard();
-       if (data.profile) {
-         setProfile({
-           ...data.profile,
-           full_name: data.profile.full_name ?? data.profile.fullName ?? null,
-         });
-       }
+      const data = await api.getSession.scoped(userId);
+      if (isStale()) return; // the signed-in user changed while this was in flight
+      const nextProfile: Profile | null = data.profile ? normalizeProfile(data.profile) : null;
+      const nextRole: AppRole = data.role === 'admin' ? 'admin' : 'user';
+      if (nextProfile) setProfile(nextProfile);
       if (data.wallet) setWallet(data.wallet);
-      setRole(data.role === 'admin' ? 'admin' : 'user');
+      setRole(nextRole);
+      writeSnapshot(userId, toSnapshot(nextProfile, nextRole));
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      if (!isStale()) console.error('Error fetching user data:', error);
     }
   }, []);
 
   useEffect(() => {
-    if (clerkLoaded) {
-      if (clerkUser) {
-        fetchUserData().finally(() => setDbLoading(false));
-      } else {
-        setProfile(null);
-        setWallet(null);
-        setRole(null);
-        setDbLoading(false);
-      }
+    if (!clerkLoaded) return;
+    // Any cached responses belong to whoever was signed in before.
+    api.clearCaches();
+    if (!clerkUserId) {
+      setProfile(null);
+      setWallet(null);
+      setRole(null);
+      setDbLoading(false);
+      return;
     }
-  }, [clerkUser, clerkLoaded, fetchUserData]);
+    let stale = false;
+    const snapshot = readSnapshot(clerkUserId);
+    // Never keep the previous account's data on screen while the new one loads.
+    setProfile(snapshot?.profile ? { ...snapshot.profile } : null);
+    setWallet(null);
+    setRole(snapshot?.role ?? null);
+    setDbLoading(!snapshot);
+    void fetchUserData(clerkUserId, () => stale).finally(() => {
+      if (!stale) setDbLoading(false);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [clerkUserId, clerkLoaded, fetchUserData]);
 
-  const signIn = async () => {
+  // Keep the snapshot in step with profile edits.
+  useEffect(() => {
+    if (clerkUserId && role && profile) {
+      writeSnapshot(clerkUserId, toSnapshot(profile, role));
+    }
+  }, [clerkUserId, profile, role]);
+
+  const signIn = useCallback(async () => {
     openSignIn();
     return { error: null };
-  };
+  }, [openSignIn]);
 
-  const signUp = async () => {
+  const signUp = useCallback(async () => {
     openSignUp();
     return { error: null };
-  };
+  }, [openSignUp]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
+    clearSnapshot();
+    api.clearCaches();
     await clerkSignOut();
     setProfile(null);
     setWallet(null);
     setRole(null);
-  };
+  }, [clerkSignOut]);
 
-  const refreshProfile = async () => {
-    if (user) {
-      try {
-        const profile = await api.getSettings();
-        if (profile) setProfile(profile);
-      } catch (e) {}
-    }
-  };
+  const refreshProfile = useCallback(async () => {
+    if (!clerkUserId) return;
+    try {
+      const profile = await api.getSettings();
+      if (profile) setProfile(normalizeProfile(profile));
+    } catch (e) {}
+  }, [clerkUserId]);
 
-  const refreshWallet = async () => {
-    if (user) {
-      try {
-        const { wallet } = await api.getWallet();
-        if (wallet) setWallet(wallet);
-      } catch (e) {}
-    }
-  };
+  const refreshWallet = useCallback(async () => {
+    if (!clerkUserId) return;
+    try {
+      const { wallet } = await api.getWallet();
+      if (wallet) setWallet(wallet);
+    } catch (e) {}
+  }, [clerkUserId]);
 
-  const value = {
-    user,
-    session: clerkSession,
-    profile,
-    wallet,
-    role,
-    isLoading: !clerkLoaded || dbLoading,
-    isAdmin: role === 'admin',
-    signIn,
-    signUp,
-    signOut,
-    refreshProfile,
-    refreshWallet,
-  };
+  const value = useMemo<AuthContextType>(
+    () => ({
+      user,
+      session: clerkSession,
+      profile,
+      wallet,
+      role,
+      isLoading: !clerkLoaded || dbLoading,
+      isAdmin: role === 'admin',
+      signIn,
+      signUp,
+      signOut,
+      refreshProfile,
+      refreshWallet,
+    }),
+    [user, clerkSession, profile, wallet, role, clerkLoaded, dbLoading, signIn, signUp, signOut, refreshProfile, refreshWallet],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
