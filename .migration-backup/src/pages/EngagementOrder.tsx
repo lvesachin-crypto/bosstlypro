@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -414,10 +414,29 @@ export default function EngagementOrder() {
     setPreviewRefreshKey(k => k + 1);
   }, []);
 
+  // Ref guard: skip setPreviewSchedules when the schedule CONTENT hasn't
+  // changed. Timestamps from new Date() always differ, so we compare only
+  // quantities + structure (runNumber, engagementType) to detect real changes.
+  // Without this guard, every DeliveryPreview render calls onScheduleChange →
+  // setPreviewSchedules → parent re-render → new engagements object →
+  // DeliveryPreview re-render → infinite "Maximum update depth exceeded" loop.
+  const prevScheduleContentKey = useRef<string>('');
+
   const handleScheduleChange = useCallback((payload: {
     schedules: FullOrganicConfig[];
     customQuantities: Record<string, number>;
   }) => {
+    // Build a content key that excludes timestamps (they change on every render
+    // because schedules are generated relative to `new Date()`).
+    const contentKey = JSON.stringify(
+      payload.schedules.map(s => ({
+        type: s.engagementType,
+        runs: s.runs.map(r => ({ n: r.runNumber, q: payload.customQuantities[`${s.engagementType}-${r.runNumber}`] ?? r.quantity })),
+      }))
+    );
+    if (contentKey === prevScheduleContentKey.current) return;
+    prevScheduleContentKey.current = contentKey;
+
     const nextSchedules = payload.schedules.reduce((acc, schedule) => {
       acc[schedule.engagementType] = schedule.runs.map((run) => {
         const runId = `${schedule.engagementType}-${run.runNumber}`;
@@ -602,8 +621,7 @@ export default function EngagementOrder() {
   // Redirect happens via useEffect in DashboardLayout if not authenticated
 
   if (!user && !authLoading) {
-    navigate('/auth');
-    return null;
+    return <Navigate to="/auth" replace />;
   }
 
   // Check if user can afford the order

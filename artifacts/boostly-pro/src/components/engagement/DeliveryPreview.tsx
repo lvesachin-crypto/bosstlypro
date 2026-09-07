@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,15 +55,37 @@ export function DeliveryPreview({ engagements, refreshKey = 0, platform = 'insta
   const [customQuantities, setCustomQuantities] = useState<Record<string, number>>({});
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
 
-  // Reset custom quantities when engagements, refreshKey, or curve changes
+  // Stable string keys — compare props by VALUE not by reference.
+  // Without this, a new object literal from the parent triggers the effects
+  // on every render, causing the "Maximum update depth exceeded" loop.
+  const engagementsKey = useMemo(() => JSON.stringify(engagements), [engagements]);
+  const curveKey = useMemo(() => JSON.stringify(customCurvePoints ?? null), [customCurvePoints]);
+
+  // Stable parsed copies so the schedules useMemo doesn't re-run when the
+  // parent passes a new object reference with identical content.
+  const stableEngagements = useMemo(
+    () => JSON.parse(engagementsKey) as Record<EngagementType, EngagementConfig>,
+    [engagementsKey],
+  );
+  const stableCurve = useMemo(
+    () => (curveKey === 'null' ? undefined : JSON.parse(curveKey) as Record<EngagementType, ControlPoint[]>),
+    [curveKey],
+  );
+
+  // Reset custom quantities when engagements, refreshKey, or curve actually change.
   useEffect(() => {
     setCustomQuantities({});
-  }, [engagements, refreshKey, customCurvePoints]);
+  }, [engagementsKey, refreshKey, curveKey]);
+
+  // Ref guard for the onScheduleChange effect — skip the call when the
+  // payload content is identical to avoid triggering a parent re-render
+  // that would start the loop again.
+  const prevOnScheduleKey = useRef<string>('');
 
   const { timeline, schedules, stats, perTypeStats } = useMemo(() => {
     // Include refreshKey in the computation to trigger regeneration
     const _ = refreshKey;
-    const enabledTypes = Object.entries(engagements)
+    const enabledTypes = Object.entries(stableEngagements)
       .filter(([_, config]) => config.enabled && config.quantity > 0)
       .map(([type, config]) => ({
         type: type as EngagementType,
@@ -137,7 +159,7 @@ export function DeliveryPreview({ engagements, refreshKey = 0, platform = 'insta
       }
       
       // Check if we have custom curve points for this type
-      const curvePoints = customCurvePoints?.[type];
+      const curvePoints = stableCurve?.[type];
       
       if (curvePoints && curvePoints.length >= 2) {
         // Use custom curve to generate schedule
@@ -238,7 +260,7 @@ export function DeliveryPreview({ engagements, refreshKey = 0, platform = 'insta
 
     // Per-type stats for summary
     const perTypeStats = schedules.map(schedule => {
-      const config = engagements[schedule.engagementType as EngagementType];
+      const config = stableEngagements[schedule.engagementType as EngagementType];
       const finishTime = schedule.runs.length > 0 
         ? schedule.runs[schedule.runs.length - 1].scheduledAt 
         : baseStartTime;
@@ -271,11 +293,18 @@ export function DeliveryPreview({ engagements, refreshKey = 0, platform = 'insta
       },
       perTypeStats,
     };
-  }, [engagements, customQuantities, refreshKey, customCurvePoints]);
+  }, [stableEngagements, customQuantities, refreshKey, stableCurve]);
 
   useEffect(() => {
-    onScheduleChange?.({ schedules, customQuantities });
-  }, [schedules, customQuantities, onScheduleChange]);
+    if (!onScheduleChange) return;
+    // Skip the call when content hasn't changed — calling onScheduleChange
+    // triggers setPreviewSchedules in the parent, which re-renders and passes
+    // a new engagements reference, which would restart the loop.
+    const key = engagementsKey + '|' + curveKey + '|' + JSON.stringify(customQuantities);
+    if (key === prevOnScheduleKey.current) return;
+    prevOnScheduleKey.current = key;
+    onScheduleChange({ schedules, customQuantities });
+  }, [schedules, customQuantities, onScheduleChange, engagementsKey, curveKey]);
 
   const handleEdit = (event: TimelineEvent) => {
     setEditingId(event.id);
