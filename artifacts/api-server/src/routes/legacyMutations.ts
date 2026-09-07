@@ -239,7 +239,7 @@ router.post("/legacy/mutate", async (req, res): Promise<void> => {
       const result = await pool.query(
         `UPDATE lovable_legacy.organic_run_schedule run
          SET status=$1, error_message=${requestedStatus === "pending" ? "NULL" : "'Cancelled by user'"},
-             provider_order_id=${requestedStatus === "pending" ? "NULL" : "provider_order_id"},
+             provider_order_id=${requestedStatus === "pending" ? "NULL" : "run.provider_order_id"},
              provider_response=NULL, provider_status=NULL, started_at=NULL,
              completed_at=${requestedStatus === "pending" ? "NULL" : "now()"},
              retry_count=${requestedStatus === "pending" ? "0" : "retry_count"}, updated_at=now()

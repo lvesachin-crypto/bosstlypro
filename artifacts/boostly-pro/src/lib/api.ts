@@ -13,9 +13,28 @@ export const fetchApi = async (endpoint: string, options: RequestInit = {}) => {
   return res.json();
 };
 
+let dashboardRequest: Promise<any> | null = null;
+let dashboardCachedAt = 0;
+let dashboardData: any = null;
+
+const getDashboard = () => {
+  if (dashboardData && Date.now() - dashboardCachedAt < 10_000) return Promise.resolve(dashboardData);
+  if (dashboardRequest) return dashboardRequest;
+  dashboardRequest = fetchApi('/dashboard')
+    .then((data) => {
+      dashboardData = data;
+      dashboardCachedAt = Date.now();
+      return data;
+    })
+    .finally(() => {
+      dashboardRequest = null;
+    });
+  return dashboardRequest;
+};
+
 export const api = {
   fetchApi,
-  getDashboard: () => fetchApi('/dashboard'),
+  getDashboard,
   getServices: () => fetchApi('/services'),
   getOrders: () => fetchApi('/orders'),
   getWallet: () => fetchApi('/wallet'),

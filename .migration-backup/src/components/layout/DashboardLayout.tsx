@@ -16,6 +16,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     if (!isLoading && !user) navigate('/auth');
   }, [user, isLoading, navigate]);
 
+  if (isLoading || !user) {
+    return <div className="min-h-screen bg-background" aria-busy="true" />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 z-40 w-[260px] hidden md:block border-r border-border">

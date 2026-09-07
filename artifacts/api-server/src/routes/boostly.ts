@@ -23,7 +23,9 @@ function userId(req: AuthenticatedRequest): string {
 }
 
 /** JIT provisioning replaces the former Supabase auth.users trigger. */
-async function ensureAccount(id: string): Promise<string | null> {
+const accountCache = new Map<string, { expiresAt: number; value: Promise<string | null> }>();
+
+async function provisionAccount(id: string): Promise<string | null> {
   const clerkUser = await clerkClient.users.getUser(id);
   const email =
     clerkUser.emailAddresses.find((address) => address.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
@@ -62,6 +64,17 @@ async function ensureAccount(id: string): Promise<string | null> {
     }
   });
   return legacyId;
+}
+
+async function ensureAccount(id: string): Promise<string | null> {
+  const cached = accountCache.get(id);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = provisionAccount(id).catch((error) => {
+    accountCache.delete(id);
+    throw error;
+  });
+  accountCache.set(id, { expiresAt: Date.now() + 15 * 60_000, value });
+  return value;
 }
 
 router.get("/dashboard", async (req, res): Promise<void> => {

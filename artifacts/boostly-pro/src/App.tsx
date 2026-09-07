@@ -157,12 +157,11 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       refetchOnMount: false,
-      retry: 2,
+      retry: 1,
       retryDelay: (i) => Math.min(1000 * 2 ** i, 10000),
     },
     mutations: {
-      retry: 1,
-      retryDelay: 1000,
+      retry: 0,
     },
   },
 });

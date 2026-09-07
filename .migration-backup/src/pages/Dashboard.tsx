@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { useCurrency } from '@/hooks/useCurrency';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Wallet, ShoppingCart, TrendingUp, Activity, Sparkles, Package, ChevronRight, Zap, Eye, Heart, MessageCircle, BarChart3, ArrowUpRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -14,43 +14,21 @@ export default function Dashboard() {
   const { formatPrice } = useCurrency();
   const navigate = useNavigate();
 
-  const { data: recentOrders } = useQuery({
-    queryKey: ['recent-orders', user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('orders').select('id, status, price, link, created_at, service:services(name, category)').eq('user_id', user?.id).order('created_at', { ascending: false }).limit(5);
-      return data || [];
-    },
+  const { data: dashboard } = useQuery({
+    queryKey: ['dashboard', user?.id],
+    queryFn: api.getDashboard,
     enabled: !!user?.id,
     staleTime: 30000,
     refetchOnWindowFocus: false,
   });
-
-  const { data: engagementOrders } = useQuery({
-    queryKey: ['recent-engagement-orders', user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('engagement_orders').select('id, order_number, status, total_price, link, created_at, base_quantity, items:engagement_order_items(engagement_type, quantity, status)').eq('user_id', user?.id).order('created_at', { ascending: false }).limit(5);
-      return data || [];
-    },
-    enabled: !!user?.id,
-    staleTime: 30000,
-    refetchOnWindowFocus: false,
-  });
-
-  const { data: stats } = useQuery({
-    queryKey: ['dashboard-stats', user?.id],
-    queryFn: async () => {
-      const { data: orders } = await supabase.from('orders').select('status, price').eq('user_id', user?.id).limit(1000);
-      const { data: engOrders } = await supabase.from('engagement_orders').select('status, total_price').eq('user_id', user?.id).limit(1000);
-      const totalOrders = (orders?.length || 0) + (engOrders?.length || 0);
-      const completedOrders = (orders?.filter(o => o.status === 'completed').length || 0) + (engOrders?.filter(o => o.status === 'completed').length || 0);
-      const activeOrders = (orders?.filter(o => ['processing','pending'].includes(o.status || '')).length || 0) + (engOrders?.filter(o => ['processing','pending'].includes(o.status || '')).length || 0);
-      const totalSpent = (orders?.reduce((s, o) => s + Number(o.price), 0) || 0) + (engOrders?.reduce((s, o) => s + Number(o.total_price), 0) || 0);
-      return { totalOrders, completedOrders, activeOrders, totalSpent };
-    },
-    enabled: !!user?.id,
-    staleTime: 60000,
-    refetchOnWindowFocus: false,
-  });
+  const recentOrders = dashboard?.recentOrders ?? [];
+  const engagementOrders = dashboard?.engagementOrders ?? [];
+  const stats = {
+    totalOrders: dashboard?.stats?.total_orders ?? 0,
+    completedOrders: dashboard?.stats?.completed_orders ?? 0,
+    activeOrders: dashboard?.stats?.active_orders ?? 0,
+    totalSpent: Number(dashboard?.stats?.total_spent ?? 0),
+  };
 
   const statusColor: Record<string, string> = {
     completed: '#3b82f6', processing: '#3b82f6', pending: '#f59e0b', failed: '#ef4444', paused: '#f59e0b',

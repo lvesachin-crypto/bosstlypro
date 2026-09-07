@@ -51,15 +51,29 @@ function quote(name: string): string {
 }
 
 async function identity(req: AuthenticatedRequest) {
-  const user = await clerkClient.users.getUser(req.userId);
-  const legacyId = user.externalId;
-  if (!legacyId) throw new Error("Your account is not linked to legacy data.");
-  const role = await pool.query<{ role: string }>(
-    "SELECT role::text AS role FROM lovable_legacy.user_roles WHERE user_id = $1::uuid LIMIT 1",
-    [legacyId],
-  );
-  return { legacyId, isAdmin: role.rows[0]?.role === "admin" };
+  const cached = identityCache.get(req.userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = (async () => {
+    const user = await clerkClient.users.getUser(req.userId);
+    const legacyId = user.externalId;
+    if (!legacyId) throw new Error("Your account is not linked to legacy data.");
+    const role = await pool.query<{ role: string }>(
+      "SELECT role::text AS role FROM lovable_legacy.user_roles WHERE user_id = $1::uuid LIMIT 1",
+      [legacyId],
+    );
+    return { legacyId, isAdmin: role.rows[0]?.role === "admin" };
+  })().catch((error) => {
+    identityCache.delete(req.userId);
+    throw error;
+  });
+  identityCache.set(req.userId, { expiresAt: Date.now() + 60_000, value });
+  return value;
 }
+
+const identityCache = new Map<string, {
+  expiresAt: number;
+  value: Promise<{ legacyId: string; isAdmin: boolean }>;
+}>();
 
 function sanitize(row: Record<string, unknown>): Record<string, unknown> {
   for (const field of Object.keys(row)) {
@@ -155,11 +169,13 @@ router.post("/legacy/query", async (req, res): Promise<void> => {
       return;
     }
     const scoped = !publicTables.has(query.table);
-    if (scoped && (!user.isAdmin || alwaysOwnerScopedTables.has(query.table))) {
+    const mustScope = scoped && (!user.isAdmin || alwaysOwnerScopedTables.has(query.table));
+    const ownerlessChild = query.table === "engagement_order_items" || query.table === "organic_run_schedule";
+    if (mustScope) {
       // All non-public legacy tables are private. The mandatory owner predicate
       // cannot be widened or overridden by a caller-supplied user_id filter.
       query.filters = query.filters.filter((filter) => filter.column !== "user_id");
-      query.filters.push({ operator: "eq", column: "user_id", value: user.legacyId });
+      if (!ownerlessChild) query.filters.push({ operator: "eq", column: "user_id", value: user.legacyId });
     }
     const values: unknown[] = [];
     const conditions = query.filters.map((filter) => {
@@ -171,6 +187,13 @@ router.post("/legacy/query", async (req, res): Promise<void> => {
       return `${column} ${filter.operator === "eq" ? "=" : "<>"} ${parameter}`;
     });
     let sql = `SELECT t.* FROM lovable_legacy.${quote(query.table)} t`;
+    if (mustScope && ownerlessChild) {
+      values.push(user.legacyId);
+      const ownerParameter = `$${values.length}`;
+      conditions.push(query.table === "engagement_order_items"
+        ? `EXISTS (SELECT 1 FROM lovable_legacy.engagement_orders owned_order WHERE owned_order.id=t.engagement_order_id AND owned_order.user_id=${ownerParameter}::uuid)`
+        : `EXISTS (SELECT 1 FROM lovable_legacy.engagement_order_items owned_item JOIN lovable_legacy.engagement_orders owned_order ON owned_order.id=owned_item.engagement_order_id WHERE owned_item.id=t.engagement_order_item_id AND owned_order.user_id=${ownerParameter}::uuid)`);
+    }
     if (conditions.length) sql += ` WHERE ${conditions.join(" AND ")}`;
     if (query.order) sql += ` ORDER BY t.${quote(query.order.column)} ${query.order.ascending ? "ASC" : "DESC"}`;
     const take = query.range ? query.range.to - query.range.from + 1 : (query.limit ?? 200);
