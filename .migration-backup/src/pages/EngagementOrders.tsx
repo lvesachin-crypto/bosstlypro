@@ -12,7 +12,6 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { format, formatDistanceToNow } from "date-fns";
 import { 
-  Loader2, 
   ExternalLink, 
   Clock, 
   CheckCircle2, 
@@ -156,7 +155,7 @@ export default function EngagementOrders() {
         {/* Orders List */}
         {ordersLoading ? (
           <Card className="p-12 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
+            <RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Loading engagement orders…</p>
           </Card>
         ) : orders?.length === 0 ? (
