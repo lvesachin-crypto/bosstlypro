@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Eye, Heart, MessageCircle, Bookmark, Share2, Zap, BarChart3, Pause, Play, X, Activity } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
+import { Eye, Heart, MessageCircle, Bookmark, Share2, BarChart3, Pause, Play, X, Activity, Repeat2, Repeat, UserPlus, Bell, Clock as ClockIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,23 +13,87 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const ENGAGEMENT_CONFIG: Record<string, { icon: typeof Eye; label: string; colorClass: string; bgClass: string; borderClass: string; textClass: string }> = {
-  views: { icon: Eye, label: "Views", colorClass: "text-blue-500", bgClass: "bg-blue-500/10", borderClass: "border-blue-500/20", textClass: "text-blue-600 dark:text-blue-400" },
-  likes: { icon: Heart, label: "Likes", colorClass: "text-rose-500", bgClass: "bg-rose-500/10", borderClass: "border-rose-500/20", textClass: "text-rose-600 dark:text-rose-400" },
-  comments: { icon: MessageCircle, label: "Comments", colorClass: "text-emerald-500", bgClass: "bg-emerald-500/10", borderClass: "border-emerald-500/20", textClass: "text-emerald-600 dark:text-emerald-400" },
-  saves: { icon: Bookmark, label: "Saves", colorClass: "text-amber-500", bgClass: "bg-amber-500/10", borderClass: "border-amber-500/20", textClass: "text-amber-600 dark:text-amber-400" },
-  shares: { icon: Share2, label: "Shares", colorClass: "text-indigo-500", bgClass: "bg-indigo-500/10", borderClass: "border-indigo-500/20", textClass: "text-indigo-600 dark:text-indigo-400" },
-  reposts: { icon: Share2, label: "Reposts", colorClass: "text-purple-500", bgClass: "bg-purple-500/10", borderClass: "border-purple-500/20", textClass: "text-purple-600 dark:text-purple-400" },
+const ENGAGEMENT_CONFIG: Record<string, { icon: typeof Eye; label: string; themeClass: string; gradientClass: string; glowClass: string; shadowClass: string }> = {
+  views: { 
+    icon: Eye, label: "Views", 
+    themeClass: "text-cyan-500", 
+    gradientClass: "from-cyan-500/20 to-cyan-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(6,182,212,0.3)]",
+    shadowClass: "shadow-cyan-500/10"
+  },
+  likes: { 
+    icon: Heart, label: "Likes", 
+    themeClass: "text-emerald-500", 
+    gradientClass: "from-emerald-500/20 to-emerald-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(16,185,129,0.3)]",
+    shadowClass: "shadow-emerald-500/10"
+  },
+  comments: { 
+    icon: MessageCircle, label: "Comments", 
+    themeClass: "text-emerald-500", 
+    gradientClass: "from-emerald-500/20 to-emerald-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(16,185,129,0.3)]",
+    shadowClass: "shadow-emerald-500/10"
+  },
+  saves: { 
+    icon: Bookmark, label: "Saves", 
+    themeClass: "text-amber-500", 
+    gradientClass: "from-amber-500/20 to-amber-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(245,158,11,0.3)]",
+    shadowClass: "shadow-amber-500/10"
+  },
+  shares: { 
+    icon: Share2, label: "Shares", 
+    themeClass: "text-violet-400", 
+    gradientClass: "from-violet-500/20 to-violet-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(139,92,246,0.3)]",
+    shadowClass: "shadow-violet-500/10"
+  },
+  reposts: { 
+    icon: Repeat2, label: "Reposts", 
+    themeClass: "text-purple-500", 
+    gradientClass: "from-purple-500/20 to-purple-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(168,85,247,0.3)]",
+    shadowClass: "shadow-purple-500/10"
+  },
+  retweets: {
+    icon: Repeat, label: "Retweets",
+    themeClass: "text-sky-500",
+    gradientClass: "from-sky-500/20 to-sky-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(14,165,233,0.3)]",
+    shadowClass: "shadow-sky-500/10"
+  },
+  followers: {
+    icon: UserPlus, label: "Followers",
+    themeClass: "text-teal-500",
+    gradientClass: "from-teal-500/20 to-teal-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(20,184,166,0.3)]",
+    shadowClass: "shadow-teal-500/10"
+  },
+  subscribers: {
+    icon: Bell, label: "Subscribers",
+    themeClass: "text-red-500",
+    gradientClass: "from-red-500/20 to-red-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(239,68,68,0.3)]",
+    shadowClass: "shadow-red-500/10"
+  },
+  watch_hours: {
+    icon: ClockIcon, label: "Watch Hours",
+    themeClass: "text-orange-500",
+    gradientClass: "from-orange-500/20 to-orange-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(249,115,22,0.3)]",
+    shadowClass: "shadow-orange-500/10"
+  }
 };
 
 const getEngagementConfig = (type: string) => {
   return ENGAGEMENT_CONFIG[type] || {
     icon: Activity,
     label: type?.charAt(0).toUpperCase() + type?.slice(1) || "Items",
-    colorClass: "text-slate-500",
-    bgClass: "bg-slate-500/10",
-    borderClass: "border-slate-500/20",
-    textClass: "text-slate-600 dark:text-slate-400"
+    themeClass: "text-slate-500",
+    gradientClass: "from-slate-500/20 to-slate-600/5",
+    glowClass: "shadow-[0_0_15px_rgba(100,116,139,0.3)]",
+    shadowClass: "shadow-slate-500/10"
   };
 };
 
@@ -114,20 +177,22 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
   const grandProgress = grandTarget > 0 ? (grandDelivered / grandTarget) * 100 : 0;
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-card to-muted/30 shadow-[0_8px_30px_rgb(0,0,0,0.08)] overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-border bg-muted/20">
+      <div className="p-4 border-b border-white/5 bg-black/5 dark:bg-white/5 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-muted-foreground" />
-            <span className="font-semibold text-foreground tracking-tight">Live Engagement Breakdown</span>
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-foreground/10 ring-1 ring-foreground/20 shadow-inner">
+              <BarChart3 className="h-4 w-4 text-foreground" />
+            </div>
+            <span className="font-bold text-foreground tracking-wide bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Live Engagement Breakdown</span>
           </div>
-          <div className="flex items-center gap-3 bg-background border border-border px-3 py-1.5 rounded-md shadow-sm">
-            <span className="text-sm text-muted-foreground font-medium">Aggregate:</span>
-            <span className="font-bold text-base text-foreground tabular-nums">
+          <div className="flex items-center gap-3 bg-background/50 border border-white/10 px-3 py-1.5 rounded-lg shadow-inner">
+            <span className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Aggregate</span>
+            <span className="font-black text-base text-foreground tabular-nums drop-shadow-sm">
               {grandDelivered.toLocaleString()} / {grandTarget.toLocaleString()}
             </span>
-            <Badge variant="secondary" className="font-mono text-xs">
+            <Badge variant="secondary" className="font-mono font-bold text-xs bg-primary/20 text-primary border-primary/30">
               {grandProgress.toFixed(1)}%
             </Badge>
           </div>
@@ -135,8 +200,8 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
       </div>
 
       {/* Cards Grid */}
-      <div className="p-4 bg-muted/10">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="p-5 bg-card/40 backdrop-blur-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {activeTypes.map(typeData => {
             const config = getEngagementConfig(typeData.type);
             const Icon = config.icon;
@@ -158,10 +223,10 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
             return (
               <div 
                 key={typeData.type} 
-                className={`group flex flex-col p-3.5 rounded-lg border transition-all ${config.bgClass} ${config.borderClass} ${
-                  isPaused ? 'opacity-75 grayscale-[30%]' : ''
-                } ${isCancelled ? 'opacity-50 grayscale-[80%]' : ''} ${
-                  onTypeClick ? 'cursor-pointer hover:border-foreground/20 hover:shadow-sm' : ''
+                className={`group relative flex flex-col p-4 rounded-xl border border-white/10 shadow-lg ${config.shadowClass} overflow-hidden transition-all duration-300 isolate ${
+                  isPaused ? 'opacity-80 grayscale-[40%]' : ''
+                } ${isCancelled ? 'opacity-60 grayscale-[80%]' : ''} ${
+                  onTypeClick ? 'cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:shadow-[0_15px_30px_-5px_rgba(0,0,0,0.2)]' : ''
                 }`}
                 onClick={() => onTypeClick?.(typeData.type)}
                 role={onTypeClick ? "button" : undefined}
@@ -173,62 +238,84 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
                   }
                 }}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Icon className={`h-4 w-4 ${config.colorClass}`} />
-                    <span className={`text-xs uppercase font-bold tracking-wider ${config.textClass}`}>{config.label}</span>
+                {/* 3D Glass Background */}
+                <div className={`absolute inset-0 bg-gradient-to-br ${config.gradientClass} mix-blend-overlay opacity-50 z-0`}></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent z-0"></div>
+                <div className="absolute inset-0 bg-card/60 backdrop-blur-md z-0"></div>
+                
+                {/* Content */}
+                <div className="relative z-10 flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-lg bg-background/50 ring-1 ring-white/10 ${config.glowClass}`}>
+                      <Icon className={`h-4 w-4 ${config.themeClass}`} />
+                    </div>
+                    <span className={`text-xs uppercase font-extrabold tracking-wider ${config.themeClass} drop-shadow-sm`}>{config.label}</span>
                   </div>
                   {isPaused && (
-                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4 border-amber-500/40 text-amber-600 bg-amber-500/10">Paused</Badge>
+                    <Badge variant="outline" className="text-[9px] font-bold uppercase px-1.5 py-0 h-4 border-amber-500/50 text-amber-500 bg-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.2)]">Paused</Badge>
                   )}
                   {isCancelled && (
-                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4 border-destructive/40 text-destructive bg-destructive/10">Stopped</Badge>
+                    <Badge variant="outline" className="text-[9px] font-bold uppercase px-1.5 py-0 h-4 border-destructive/50 text-destructive bg-destructive/10 shadow-[0_0_10px_rgba(var(--destructive),0.2)]">Stopped</Badge>
                   )}
                   {isCompleted && (
-                    <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 h-4 border-blue-500/40 text-blue-600 bg-blue-500/10">Done</Badge>
+                    <Badge variant="outline" className="text-[9px] font-bold uppercase px-1.5 py-0 h-4 border-emerald-500/50 text-emerald-500 bg-emerald-500/10 shadow-[0_0_10px_rgba(16,185,129,0.2)]">Done</Badge>
                   )}
                 </div>
                 
-                <div className="flex items-baseline gap-1 mt-auto">
-                  <span className={`text-xl font-bold tabular-nums ${config.textClass}`}>
-                    {delivered.toLocaleString()}
-                  </span>
-                  <span className="text-xs text-muted-foreground font-medium">
-                    / {dynamicTarget.toLocaleString()}
-                  </span>
+                <div className="relative z-10 flex flex-col gap-1 mt-auto">
+                  <div className="flex items-baseline gap-1.5 drop-shadow-md">
+                    <span className="text-2xl font-black tabular-nums text-foreground">
+                      {delivered.toLocaleString()}
+                    </span>
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      / {dynamicTarget.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
                 
-                <Progress value={Math.min(progress, 100)} className="h-1.5 mt-2.5 bg-background border border-border/50" />
+                {/* Luminous Progress Bar */}
+                <div className="relative z-10 h-2 mt-3 w-full bg-background/80 rounded-full overflow-hidden shadow-inner border border-white/5">
+                  <div 
+                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ease-out"
+                    style={{ 
+                      width: `${Math.min(progress, 100)}%`,
+                      backgroundColor: 'currentColor'
+                    }}
+                  >
+                    <div className={`absolute inset-0 opacity-100 ${config.themeClass} bg-current`}></div>
+                    <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.5)_50%,transparent_100%)] animate-[shimmer_2s_infinite]"></div>
+                  </div>
+                </div>
                 
                 {/* Actions */}
                 {itemInfo && !isTerminal && (
-                  <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border/40" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative z-10 flex items-center gap-1.5 mt-4 pt-3 border-t border-white/10" onClick={(e) => e.stopPropagation()}>
                     {isPaused ? (
                       <Button 
                         size="sm" 
                         variant="secondary"
-                        className="flex-1 h-7 text-[10px] uppercase font-bold tracking-wider gap-1 bg-background hover:bg-muted"
+                        className="flex-1 h-8 text-[10px] uppercase font-bold tracking-wider gap-1.5 bg-background/80 hover:bg-background border border-white/5 shadow-sm hover:shadow-md transition-all"
                         onClick={() => onResumeType?.(itemInfo.id)}
                       >
-                        <Play className="h-3 w-3" /> Resume
+                        <Play className="h-3 w-3 text-emerald-500" /> Resume
                       </Button>
                     ) : (
                       <Button 
                         size="sm" 
                         variant="secondary"
-                        className="flex-1 h-7 text-[10px] uppercase font-bold tracking-wider gap-1 bg-background hover:bg-muted text-muted-foreground"
+                        className="flex-1 h-8 text-[10px] uppercase font-bold tracking-wider gap-1.5 bg-background/80 hover:bg-background border border-white/5 shadow-sm hover:shadow-md transition-all"
                         onClick={() => onPauseType?.(itemInfo.id)}
                       >
-                        <Pause className="h-3 w-3" /> Pause
+                        <Pause className="h-3 w-3 text-amber-500" /> Pause
                       </Button>
                     )}
                     <Button 
                       size="sm" 
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      variant="destructive"
+                      className="h-8 w-8 p-0 bg-background/80 hover:bg-destructive/90 text-destructive hover:text-white border border-white/5 shadow-sm hover:shadow-md transition-all"
                       onClick={() => setCancelConfirmType(typeData.type)}
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 )}
@@ -239,9 +326,12 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
       </div>
 
       <AlertDialog open={!!cancelConfirmType} onOpenChange={(open) => !open && setCancelConfirmType(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="border-white/10 bg-card/95 backdrop-blur-xl shadow-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <div className="p-1.5 rounded-full bg-destructive/20 text-destructive ring-1 ring-destructive/30">
+                <X className="h-4 w-4" />
+              </div>
               Cancel {cancelConfirmType ? getEngagementConfig(cancelConfirmType).label : ''}?
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -249,9 +339,9 @@ export function PerTypeBreakdown({ types, allRuns = [], onTypeClick, itemStatuse
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep Active</AlertDialogCancel>
+            <AlertDialogCancel className="bg-background/50 border-white/10 hover:bg-background">Keep Active</AlertDialogCancel>
             <AlertDialogAction 
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground font-bold shadow-lg shadow-destructive/20 hover:bg-destructive/90 hover:scale-105 active:scale-95 transition-all"
               onClick={() => {
                 if (cancelConfirmType && itemStatuses?.[cancelConfirmType]) {
                   onCancelType?.(itemStatuses[cancelConfirmType].id);

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Rocket, Upload, Package, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { NoBundleBanner } from '@/components/NoBundleBanner';
+import { generateOrganicSchedule } from '@/lib/organic-algorithm';
 
 interface Row {
   id: string;
@@ -78,6 +79,18 @@ export default function MassOrder() {
         .from('user_bundles')
         .select('id, name, platform, user_bundle_items(id, engagement_type, price_per_k, user_service_id, user_bundle_item_providers(user_provider_account_id, provider_service_id, priority, enabled))')
         .order('created_at', { ascending: false });
+      return data || [];
+    },
+  });
+
+  const { data: userServices = [] } = useQuery({
+    queryKey: ['mass-order-user-services', user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('user_services')
+        .select('user_provider_account_id, provider_service_id, min_quantity, is_active')
+        .eq('is_active', true);
       return data || [];
     },
   });
@@ -187,6 +200,25 @@ export default function MassOrder() {
             const providerMappings = (bundleItem?.user_bundle_item_providers || [])
               .filter((mapping: any) => mapping.enabled && mapping.provider_service_id)
               .sort((a: any, b: any) => (a.priority ?? 999) - (b.priority ?? 999));
+            const mappedMinimums = providerMappings
+              .map((mapping: any) => {
+                const service = (userServices as any[]).find((candidate: any) =>
+                  candidate.user_provider_account_id === mapping.user_provider_account_id
+                  && String(candidate.provider_service_id) === String(mapping.provider_service_id)
+                );
+                return Number(service?.min_quantity) || 0;
+              })
+              .filter((minimum: number) => minimum > 0);
+            const providerMinimum = mappedMinimums.length ? Math.min(...mappedMinimums) : undefined;
+            const organicSchedule = generateOrganicSchedule(
+              t,
+              q,
+              15,
+              false,
+              new Date(Date.now() + 5 * 60_000),
+              providerMinimum,
+              hours,
+            );
             const priceK = serviceMap[t]?.price ?? 0;
             return {
               type: t,
@@ -203,6 +235,13 @@ export default function MassOrder() {
               time_limit_hours: hours,
               variance_percent: 15,
               peak_hours_enabled: false,
+              scheduled_runs: organicSchedule.runs.map((run) => ({
+                scheduled_at: run.scheduledAt.toISOString(),
+                quantity_to_send: run.quantity,
+                base_quantity: run.baseQuantity,
+                variance_applied: run.varianceApplied,
+                peak_multiplier: run.peakMultiplier,
+              })),
             };
           })
           .filter((e) => e.quantity > 0);

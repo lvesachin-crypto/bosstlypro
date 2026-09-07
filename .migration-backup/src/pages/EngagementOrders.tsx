@@ -57,7 +57,7 @@ export default function EngagementOrders() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Instant load with cache + moderate refresh
-  const { data: orders, refetch } = useQuery({
+  const { data: orders, isLoading: ordersLoading, refetch } = useQuery({
     queryKey: ['engagement-orders', user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -67,12 +67,12 @@ export default function EngagementOrders() {
           id, order_number, status, total_price, link, base_quantity, created_at, updated_at, is_organic_mode,
           items:engagement_order_items(
             id, engagement_type, quantity, delivered_count, status,
-            runs:organic_run_schedule(id, status, quantity_to_send, scheduled_at, completed_at, run_number, provider_status, provider_remains, provider_order_id, error_message)
+            runs:organic_run_schedule(status, quantity_to_send, scheduled_at, provider_status, provider_remains, error_message)
           )
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(30);
       if (error) throw error;
       return data;
     },
@@ -80,6 +80,7 @@ export default function EngagementOrders() {
     staleTime: 30000,
     refetchOnWindowFocus: false,
     refetchInterval: 30000, // Refresh every 30s
+    placeholderData: (previousOrders) => previousOrders,
 
   });
 
@@ -153,7 +154,12 @@ export default function EngagementOrders() {
         )}
 
         {/* Orders List */}
-        {orders?.length === 0 ? (
+        {ordersLoading ? (
+          <Card className="p-12 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Loading engagement orders…</p>
+          </Card>
+        ) : orders?.length === 0 ? (
           <Card className="p-12 text-center">
             <p className="text-muted-foreground mb-4">No engagement orders yet</p>
             <Button onClick={() => navigate('/engagement-order')}>
