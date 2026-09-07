@@ -106,7 +106,7 @@ export default function EngagementOrderDetail() {
   const [editingRun, setEditingRun] = useState<EditRunData | null>(null);
 
   // Dynamic refetch interval - balanced for performance
-  const [refetchInterval, setRefetchInterval] = useState<number | false>(15000);
+  const [refetchInterval, setRefetchInterval] = useState<number | false>(30000);
 
   const { data: order, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['engagement-order-detail', orderNumber],
@@ -130,7 +130,7 @@ export default function EngagementOrderDetail() {
     },
     enabled: !!orderNumber && !!user,
     refetchInterval,
-    staleTime: 2000,
+    staleTime: 15000,
     refetchOnWindowFocus: false,
     placeholderData: (prev: any) => prev, // Show previous data instantly while refetching
   });
@@ -144,9 +144,9 @@ export default function EngagementOrderDetail() {
     );
     
     if (hasActiveRuns) {
-      setRefetchInterval(15000); // 15s when runs are actively executing (realtime handles instant updates)
+      setRefetchInterval(30000); // Realtime handles instant updates; polling is a fallback.
     } else if (isActive) {
-      setRefetchInterval(30000); // 30s for pending/processing
+      setRefetchInterval(45000); // Pending orders change less frequently.
     } else if (order.status === 'completed') {
       setRefetchInterval(false); // Stop polling for completed orders
     } else {

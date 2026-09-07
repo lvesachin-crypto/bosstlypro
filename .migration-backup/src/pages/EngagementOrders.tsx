@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,6 +31,7 @@ import {
   BarChart3
 } from "lucide-react";
 import { PageMeta } from "@/components/seo/PageMeta";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const ENGAGEMENT_ICONS = {
   views: Eye,
@@ -56,7 +57,7 @@ export default function EngagementOrders() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Instant load with cache + moderate refresh
-  const { data: orders, isLoading: ordersLoading, refetch } = useQuery({
+  const { data: orders, isLoading: ordersLoading, isFetching, refetch } = useQuery({
     queryKey: ['engagement-orders', user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -78,7 +79,9 @@ export default function EngagementOrders() {
     enabled: !!user,
     staleTime: 30000,
     refetchOnWindowFocus: false,
-    refetchInterval: 30000, // Refresh every 30s
+    refetchInterval: (query) => query.state.data?.some((order: any) =>
+      order.status === "pending" || order.status === "processing"
+    ) ? 30000 : false,
     placeholderData: (previousOrders) => previousOrders,
 
   });
@@ -94,14 +97,11 @@ export default function EngagementOrders() {
     );
   }, [orders, searchQuery]);
 
-  // INSTANT RENDER - no loading state
-  if (!user && !authLoading) {
-    navigate('/auth');
-    return null;
-  }
+  useEffect(() => {
+    if (!user && !authLoading) navigate('/auth', { replace: true });
+  }, [authLoading, navigate, user]);
 
   if (!user) {
-    navigate('/auth');
     return null;
   }
 
@@ -116,8 +116,8 @@ export default function EngagementOrders() {
             <p className="text-muted-foreground">Track your full engagement deliveries in real-time</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
               Refresh
             </Button>
             <Button onClick={() => navigate('/engagement-order')}>
@@ -154,10 +154,27 @@ export default function EngagementOrders() {
 
         {/* Orders List */}
         {ordersLoading ? (
-          <Card className="p-12 text-center">
-            <RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">Loading engagement orders…</p>
-          </Card>
+          <div className="space-y-3" aria-label="Loading engagement orders">
+            {[0, 1].map((index) => (
+              <Card key={index} className="overflow-hidden">
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-6 w-24" />
+                      <Skeleton className="h-5 w-20 rounded-full" />
+                    </div>
+                    <Skeleton className="h-5 w-16" />
+                  </div>
+                  <Skeleton className="h-4 w-2/3 max-w-md" />
+                  <div className="grid grid-cols-3 gap-3 pt-1">
+                    <Skeleton className="h-10 rounded-lg" />
+                    <Skeleton className="h-10 rounded-lg" />
+                    <Skeleton className="h-10 rounded-lg" />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
         ) : orders?.length === 0 ? (
           <Card className="p-12 text-center">
             <p className="text-muted-foreground mb-4">No engagement orders yet</p>

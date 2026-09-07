@@ -20,6 +20,19 @@ type ProviderAccount = {
 let executorRunning = false;
 let checkerRunning = false;
 
+function boundedPositiveInt(value: string | undefined, fallback: number, maximum: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(maximum, Math.floor(parsed));
+}
+
+const EXECUTOR_CONCURRENCY = boundedPositiveInt(process.env.ROTATION_EXECUTOR_CONCURRENCY, 8, 20);
+const RUNS_PER_EXECUTOR = boundedPositiveInt(process.env.ROTATION_RUNS_PER_EXECUTOR, 12, 25);
+
+function retryDelayMinutes(retryCount: number, baseMinutes = 2): number {
+  return Math.min(60, baseMinutes * (2 ** Math.min(5, Math.max(0, retryCount))));
+}
+
 function safePanelUrl(value: string): string {
   const url = new URL(value);
   const host = url.hostname.toLowerCase();
@@ -155,19 +168,21 @@ async function dispatch(run: any): Promise<void> {
 
   if (!ordered.length) {
     const message = "No active provider account is currently mapped to this service.";
+    const retryMinutes = retryDelayMinutes(Number(run.retry_count ?? 0), 2);
     await pool.query(
       `UPDATE lovable_legacy.organic_run_schedule
           SET status='pending',claim_token=NULL,claimed_at=NULL,rotation_lock_key=NULL,
               user_provider_account_id=NULL,user_provider_account_name=NULL,error_message=$1,
-              retry_count=retry_count+1,scheduled_at=now()+interval '1 minute',updated_at=now()
+              retry_count=retry_count+1,scheduled_at=now()+($3 * interval '1 minute'),updated_at=now()
         WHERE id=$2::uuid AND status='dispatching' AND provider_order_id IS NULL`,
-      [message, run.id],
+      [message, run.id, retryMinutes],
     );
     await audit(run, "no_active_provider_requeued", undefined, { error: message });
     return;
   }
 
   let busyCount = 0;
+  let unavailableCount = 0;
   const failures: string[] = [];
 
   for (const mapping of ordered) {
@@ -205,6 +220,13 @@ async function dispatch(run: any): Promise<void> {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Provider credential is unavailable.";
       failures.push(`${account.name}: ${message}`);
+      unavailableCount += 1;
+      await pool.query(
+        `UPDATE lovable_legacy.user_provider_accounts
+            SET is_active=false,last_tested_at=now(),last_test_ok=false,last_test_error=$1,updated_at=now()
+          WHERE id=$2::uuid`,
+        [message, account.id],
+      );
       await audit(run, "provider_unavailable", account, { request: requestPayload, error: message });
       await releaseAttempt(run.id);
       continue;
@@ -291,7 +313,42 @@ async function dispatch(run: any): Promise<void> {
     return;
   }
 
+  if (unavailableCount > 0) {
+    const message = "Provider credentials require attention. Run remains queued until an account is reactivated.";
+    const retryMinutes = retryDelayMinutes(Number(run.retry_count ?? 0), 5);
+    await pool.query(
+      `UPDATE lovable_legacy.organic_run_schedule
+          SET status='pending',claim_token=NULL,claimed_at=NULL,rotation_lock_key=NULL,
+              user_provider_account_id=NULL,user_provider_account_name=NULL,error_message=$1,
+              retry_count=retry_count+1,scheduled_at=now()+($3 * interval '1 minute'),updated_at=now()
+        WHERE id=$2::uuid AND status='dispatching' AND provider_order_id IS NULL`,
+      [message, run.id, retryMinutes],
+    );
+    await audit(run, "provider_credentials_requeued", undefined, { error: message });
+    return;
+  }
+
   throw new Error(failures.join(" | ") || "No active provider accepted this run.");
+}
+
+async function processNextRun(): Promise<boolean> {
+  const run = await claimRun();
+  if (!run) return false;
+  try {
+    await dispatch(run);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Provider dispatch failed.";
+    await pool.query(
+      `UPDATE lovable_legacy.organic_run_schedule
+          SET status='failed',rotation_lock_key=NULL,claim_token=NULL,error_message=$1,
+              retry_count=retry_count+1,completed_at=now(),updated_at=now()
+        WHERE id=$2::uuid AND status='dispatching' AND provider_order_id IS NULL`,
+      [message, run.id],
+    );
+    await audit(run, "dispatch_failed", undefined, { error: message });
+    logger.warn({ runId: run.id, err: message }, "Organic run dispatch failed");
+  }
+  return true;
 }
 
 async function executorTick(): Promise<void> {
@@ -308,24 +365,13 @@ async function executorTick(): Promise<void> {
           AND COALESCE(dispatch_uncertain,false)=false
           AND claimed_at<now()-interval '2 minutes'`,
     );
-    for (let count = 0; count < 20; count += 1) {
-      const run = await claimRun();
-      if (!run) break;
-      try {
-        await dispatch(run);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Provider dispatch failed.";
-        await pool.query(
-          `UPDATE lovable_legacy.organic_run_schedule
-              SET status='failed',rotation_lock_key=NULL,claim_token=NULL,error_message=$1,
-                  retry_count=retry_count+1,completed_at=now(),updated_at=now()
-            WHERE id=$2::uuid AND status='dispatching' AND provider_order_id IS NULL`,
-          [message, run.id],
-        );
-        await audit(run, "dispatch_failed", undefined, { error: message });
-        logger.warn({ runId: run.id, err: message }, "Organic run dispatch failed");
+    await Promise.all(Array.from({ length: EXECUTOR_CONCURRENCY }, async () => {
+      for (let count = 0; count < RUNS_PER_EXECUTOR; count += 1) {
+        if (!(await processNextRun())) break;
       }
-    }
+    }));
+  } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : "Executor tick failed" }, "Rotation executor tick failed");
   } finally {
     executorRunning = false;
   }
@@ -347,8 +393,33 @@ async function checkRunStatus(run: any): Promise<boolean> {
     api_key_ciphertext: run.api_key_ciphertext,
     priority: Number(run.priority ?? 1),
   };
+  let key: string;
   try {
-    const key = decryptProviderCredential(account.api_key_ciphertext);
+    key = decryptProviderCredential(account.api_key_ciphertext);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Provider credential is unavailable.";
+    await Promise.all([
+      pool.query(
+        `UPDATE lovable_legacy.user_provider_accounts
+            SET is_active=false,last_tested_at=now(),last_test_ok=false,last_test_error=$1,updated_at=now()
+          WHERE id=$2::uuid`,
+        [message, account.id],
+      ),
+      pool.query(
+        `UPDATE lovable_legacy.organic_run_schedule
+            SET error_message=$1,updated_at=now()
+          WHERE id=$2::uuid`,
+        [`[status check] ${message}`, run.id],
+      ),
+    ]);
+    await audit(run, "status_provider_unavailable", account, {
+      providerOrderId: String(run.provider_order_id),
+      error: message,
+    });
+    return false;
+  }
+
+  try {
     const params = new URLSearchParams({ key, action: "status", order: String(run.provider_order_id) });
     const response = await fetch(safePanelUrl(account.api_url), {
       method: "POST",
@@ -424,17 +495,28 @@ async function checkerTick(): Promise<void> {
   checkerRunning = true;
   try {
     const result = await pool.query(
-      `SELECT rs.*,eoi.engagement_type,eo.id AS engagement_order_id,eo.user_id,eo.link,
+      `WITH candidates AS (
+         SELECT rs.id
+           FROM lovable_legacy.organic_run_schedule rs
+          WHERE rs.status IN ('started','processing')
+            AND rs.provider_order_id IS NOT NULL
+            AND (rs.last_status_check IS NULL OR rs.last_status_check<now()-interval '45 seconds')
+          ORDER BY COALESCE(rs.last_status_check,rs.started_at,rs.updated_at)
+          FOR UPDATE SKIP LOCKED
+          LIMIT 500
+       ), claimed AS (
+         UPDATE lovable_legacy.organic_run_schedule rs
+            SET last_status_check=now()
+           FROM candidates
+          WHERE rs.id=candidates.id
+          RETURNING rs.*
+       )
+       SELECT claimed.*,eoi.engagement_type,eo.id AS engagement_order_id,eo.user_id,eo.link,
               upa.api_url,upa.api_key_ciphertext,upa.priority
-         FROM lovable_legacy.organic_run_schedule rs
-         JOIN lovable_legacy.engagement_order_items eoi ON eoi.id=rs.engagement_order_item_id
+         FROM claimed
+         JOIN lovable_legacy.engagement_order_items eoi ON eoi.id=claimed.engagement_order_item_id
          JOIN lovable_legacy.engagement_orders eo ON eo.id=eoi.engagement_order_id
-         JOIN lovable_legacy.user_provider_accounts upa ON upa.id=rs.user_provider_account_id
-        WHERE rs.status IN ('started','processing')
-          AND rs.provider_order_id IS NOT NULL
-          AND (rs.last_status_check IS NULL OR rs.last_status_check<now()-interval '45 seconds')
-        ORDER BY COALESCE(rs.last_status_check,rs.started_at,rs.updated_at)
-        LIMIT 500`,
+         JOIN lovable_legacy.user_provider_accounts upa ON upa.id=claimed.user_provider_account_id`,
     );
     const batches = result.rows;
     let releasedLock = false;
@@ -445,6 +527,8 @@ async function checkerTick(): Promise<void> {
     if (releasedLock) {
       void executorTick();
     }
+  } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : "Status checker tick failed" }, "Provider status checker tick failed");
   } finally {
     checkerRunning = false;
   }

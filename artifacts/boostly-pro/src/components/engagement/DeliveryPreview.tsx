@@ -13,6 +13,7 @@ import {
 } from "@/lib/engagement-types";
 import { 
   generateOrganicSchedule,
+  coordinateEngagementSchedules,
   formatDuration,
   getPeakLabel,
   FullOrganicConfig,
@@ -114,7 +115,7 @@ export function DeliveryPreview({ engagements, refreshKey = 0, platform = 'insta
     let viewsDurationHours = 0;
     
     // Generate individual schedule for each type with SEQUENCED start times
-    const schedules: FullOrganicConfig[] = sortedTypes.map(({ type, config }) => {
+    const independentSchedules: FullOrganicConfig[] = sortedTypes.map(({ type, config }) => {
       const rawTimeLimitHours = config.timeLimitHours ?? DEFAULT_ORGANIC_SETTINGS.timeLimitHours;
       const variancePercent = config.variancePercent ?? DEFAULT_ORGANIC_SETTINGS.variancePercent;
       const peakHoursEnabled = config.peakHoursEnabled ?? DEFAULT_ORGANIC_SETTINGS.peakHoursEnabled;
@@ -209,6 +210,7 @@ export function DeliveryPreview({ engagements, refreshKey = 0, platform = 'insta
       
       return schedule;
     });
+    const schedules = coordinateEngagementSchedules(independentSchedules);
 
     // Merge all runs into a single timeline with unique IDs
     const allEvents: TimelineEvent[] = [];

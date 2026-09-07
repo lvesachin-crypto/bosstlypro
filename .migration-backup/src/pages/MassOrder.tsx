@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Rocket, Upload, Package, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { NoBundleBanner } from '@/components/NoBundleBanner';
-import { generateOrganicSchedule } from '@/lib/organic-algorithm';
+import { coordinateEngagementSchedules, generateOrganicSchedule } from '@/lib/organic-algorithm';
 
 interface Row {
   id: string;
@@ -192,7 +192,7 @@ export default function MassOrder() {
       let firstError = '';
       for (const r of rows) {
         const hours = timeframeToHours(r.timeframe);
-        const engagements = Object.keys(r.types)
+        const preparedEngagements = Object.keys(r.types)
           .filter((t) => r.types[t])
           .map((t) => {
             const q = r.qty[t] ?? Math.round(r.base_quantity * (RATIOS[t] || 0));
@@ -222,6 +222,7 @@ export default function MassOrder() {
             const priceK = serviceMap[t]?.price ?? 0;
             return {
               type: t,
+              organicSchedule,
               quantity: q,
               price: (q / 1000) * priceK,
               service_id: serviceMap[t]?.service_id ?? null,
@@ -235,16 +236,25 @@ export default function MassOrder() {
               time_limit_hours: hours,
               variance_percent: 15,
               peak_hours_enabled: false,
-              scheduled_runs: organicSchedule.runs.map((run) => ({
-                scheduled_at: run.scheduledAt.toISOString(),
-                quantity_to_send: run.quantity,
-                base_quantity: run.baseQuantity,
-                variance_applied: run.varianceApplied,
-                peak_multiplier: run.peakMultiplier,
-              })),
             };
           })
           .filter((e) => e.quantity > 0);
+        const coordinatedSchedules = coordinateEngagementSchedules(
+          preparedEngagements.map((engagement) => engagement.organicSchedule),
+        );
+        const scheduleByType = new Map(
+          coordinatedSchedules.map((schedule) => [schedule.engagementType, schedule]),
+        );
+        const engagements = preparedEngagements.map(({ organicSchedule: _organicSchedule, ...engagement }) => ({
+          ...engagement,
+          scheduled_runs: (scheduleByType.get(engagement.type)?.runs ?? []).map((run) => ({
+            scheduled_at: run.scheduledAt.toISOString(),
+            quantity_to_send: run.quantity,
+            base_quantity: run.baseQuantity,
+            variance_applied: run.varianceApplied,
+            peak_multiplier: run.peakMultiplier,
+          })),
+        }));
 
         if (!engagements.length) { fail++; continue; }
         const missingMapping = engagements.find((engagement) => engagement.provider_mappings.length === 0);

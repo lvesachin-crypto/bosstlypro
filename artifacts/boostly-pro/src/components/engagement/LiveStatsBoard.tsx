@@ -31,21 +31,21 @@ export function LiveStatsBoard({
   const progressPercent = totalQuantity > 0 ? (totalDelivered / totalQuantity) * 100 : 0;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-background via-background to-secondary/20">
+    <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-background via-background to-secondary/20">
       {/* Decorative gradient orbs */}
       <div className="absolute -top-20 -right-20 w-40 h-40 bg-foreground/5 rounded-full blur-3xl" />
       <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-primary/10 rounded-full blur-3xl" />
       
       {/* Header */}
-      <div className="relative px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 backdrop-blur-sm">
+      <div className="relative px-4 py-2.5 border-b border-border/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <div className="relative">
             <span className="absolute inset-0 animate-ping rounded-full bg-foreground/40"></span>
             <span className="relative flex h-3 w-3 rounded-full bg-foreground shadow-lg shadow-foreground/50"></span>
           </div>
-          <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-secondary/50 border border-border">
-            <Zap className="h-4 w-4 text-foreground" />
-            <span className="font-bold text-xs sm:text-sm uppercase tracking-widest text-foreground">Live Tracking</span>
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/50 border border-border">
+            <Zap className="h-3.5 w-3.5 text-foreground" />
+            <span className="font-bold text-xs uppercase tracking-widest text-foreground">Live Tracking</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -65,47 +65,47 @@ export function LiveStatsBoard({
       {/* Big Stats Grid */}
       <div className="relative grid grid-cols-3 sm:grid-cols-5 divide-x divide-border/50">
         {/* Total Runs */}
-        <div className="p-3 sm:p-6 text-center group hover:bg-secondary/30 transition-colors">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 rounded-xl bg-secondary/50 flex items-center justify-center border border-border">
-            <TrendingUp className="h-4 w-4 sm:h-6 sm:w-6 text-foreground" />
+        <div className="p-3 text-center group hover:bg-secondary/30 transition-colors">
+          <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-secondary/50 flex items-center justify-center border border-border">
+            <TrendingUp className="h-4 w-4 text-foreground" />
           </div>
-          <p className="text-2xl sm:text-4xl font-bold text-foreground mb-1">{totalRuns}</p>
+          <p className="text-2xl font-bold text-foreground leading-none mb-1">{totalRuns}</p>
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider">Total Runs</p>
         </div>
 
         {/* Completed */}
-        <div className="p-3 sm:p-6 text-center group hover:bg-secondary/30 transition-colors">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 rounded-xl bg-foreground/10 flex items-center justify-center border border-foreground/20">
-            <CheckCircle2 className="h-4 w-4 sm:h-6 sm:w-6 text-foreground" />
+        <div className="p-3 text-center group hover:bg-secondary/30 transition-colors">
+          <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-foreground/10 flex items-center justify-center border border-foreground/20">
+            <CheckCircle2 className="h-4 w-4 text-foreground" />
           </div>
-          <p className="text-2xl sm:text-4xl font-bold text-foreground mb-1">{completedRuns}</p>
+          <p className="text-2xl font-bold text-foreground leading-none mb-1">{completedRuns}</p>
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider">Completed</p>
         </div>
 
         {/* In Progress */}
-        <div className="p-3 sm:p-6 text-center group hover:bg-secondary/30 transition-colors">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 rounded-xl bg-foreground/10 flex items-center justify-center border border-foreground/20">
-            <Play className="h-4 w-4 sm:h-6 sm:w-6 text-foreground" />
+        <div className="p-3 text-center group hover:bg-secondary/30 transition-colors">
+          <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-foreground/10 flex items-center justify-center border border-foreground/20">
+            <Play className="h-4 w-4 text-foreground" />
           </div>
-          <p className="text-2xl sm:text-4xl font-bold text-foreground mb-1">{startedRuns}</p>
+          <p className="text-2xl font-bold text-foreground leading-none mb-1">{startedRuns}</p>
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider">In Progress</p>
         </div>
 
         {/* Pending */}
-        <div className="p-3 sm:p-6 text-center group hover:bg-secondary/30 transition-colors">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 rounded-xl bg-muted flex items-center justify-center border border-border">
-            <Clock className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground" />
+        <div className="p-3 text-center group hover:bg-secondary/30 transition-colors">
+          <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-muted flex items-center justify-center border border-border">
+            <Clock className="h-4 w-4 text-muted-foreground" />
           </div>
-          <p className="text-2xl sm:text-4xl font-bold text-foreground mb-1">{pendingRuns}</p>
+          <p className="text-2xl font-bold text-foreground leading-none mb-1">{pendingRuns}</p>
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider">Pending</p>
         </div>
 
         {/* Delivered */}
-        <div className="p-3 sm:p-6 text-center group hover:bg-secondary/30 transition-colors">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 rounded-xl bg-foreground/10 flex items-center justify-center border border-foreground/20">
-            <Zap className="h-4 w-4 sm:h-6 sm:w-6 text-foreground" />
+        <div className="p-3 text-center group hover:bg-secondary/30 transition-colors">
+          <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-foreground/10 flex items-center justify-center border border-foreground/20">
+            <Zap className="h-4 w-4 text-foreground" />
           </div>
-          <p className="text-2xl sm:text-4xl font-bold text-foreground mb-1">
+          <p className="text-2xl font-bold text-foreground leading-none mb-1">
             {totalDelivered.toLocaleString()}
           </p>
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider">Delivered</p>
@@ -114,7 +114,7 @@ export function LiveStatsBoard({
 
       {/* Failed Runs Warning with Retry Button */}
       {failedRuns > 0 && (
-        <div className="mx-6 mt-4 bg-muted border border-border rounded-xl p-4 flex items-center justify-between gap-3">
+        <div className="mx-4 mt-3 bg-muted border border-border rounded-lg p-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
               <AlertTriangle className="h-5 w-5 text-foreground" />
@@ -143,16 +143,16 @@ export function LiveStatsBoard({
       )}
 
       {/* Overall Progress Bar */}
-      <div className="relative p-4 sm:p-6 space-y-4">
+      <div className="relative p-3 sm:px-4 space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-secondary/50 flex items-center justify-center border border-border">
-              <RefreshCw className="h-4 w-4 text-muted-foreground" />
+            <div className="w-7 h-7 rounded-md bg-secondary/50 flex items-center justify-center border border-border">
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
             <span className="font-semibold text-foreground">Overall Progress</span>
           </div>
           <div className="text-right">
-            <span className="text-2xl font-bold text-foreground">
+            <span className="text-lg font-bold text-foreground">
               {totalDelivered.toLocaleString()}
             </span>
             <span className="text-muted-foreground"> / {totalQuantity.toLocaleString()}</span>
@@ -160,7 +160,7 @@ export function LiveStatsBoard({
         </div>
         
         {/* Progress bar */}
-        <div className="relative h-4 bg-secondary/50 rounded-full overflow-hidden border border-border/50">
+        <div className="relative h-2.5 bg-secondary/50 rounded-full overflow-hidden border border-border/50">
           <div 
             className="absolute inset-y-0 left-0 bg-foreground rounded-full transition-all duration-700 ease-out"
             style={{ width: `${progressPercent}%` }}

@@ -31,6 +31,82 @@ export interface FullOrganicConfig {
   varietyIndex: number;        // How varied the delivery is (higher = more organic)
 }
 
+const ENGAGEMENT_REACTION_TIMING: Record<string, { startViewIndex: number; minDelay: number; maxDelay: number }> = {
+  likes: { startViewIndex: 0, minDelay: 8, maxDelay: 18 },
+  comments: { startViewIndex: 1, minDelay: 18, maxDelay: 40 },
+  shares: { startViewIndex: 1, minDelay: 15, maxDelay: 35 },
+  saves: { startViewIndex: 1, minDelay: 22, maxDelay: 48 },
+  reposts: { startViewIndex: 2, minDelay: 28, maxDelay: 60 },
+  retweets: { startViewIndex: 2, minDelay: 25, maxDelay: 55 },
+  followers: { startViewIndex: 2, minDelay: 35, maxDelay: 75 },
+  subscribers: { startViewIndex: 2, minDelay: 35, maxDelay: 75 },
+  watch_hours: { startViewIndex: 0, minDelay: 10, maxDelay: 25 },
+};
+
+/**
+ * Coordinate a full-engagement order around its Views reach curve.
+ * Quantities remain independently randomized, but reactions cannot precede Views.
+ */
+export function coordinateEngagementSchedules(schedules: FullOrganicConfig[]): FullOrganicConfig[] {
+  const viewsSchedule = schedules.find((schedule) => schedule.engagementType.toLowerCase() === 'views');
+  if (!viewsSchedule?.runs.length) return schedules;
+
+  const viewRuns = [...viewsSchedule.runs].sort(
+    (left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime(),
+  );
+
+  return schedules.map((schedule) => {
+    const type = schedule.engagementType.toLowerCase();
+    if (type === 'views' || schedule.runs.length === 0) return schedule;
+
+    const timing = ENGAGEMENT_REACTION_TIMING[type] ?? {
+      startViewIndex: 1,
+      minDelay: 20,
+      maxDelay: 50,
+    };
+    const originalRuns = [...schedule.runs].sort(
+      (left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime(),
+    );
+    const startAnchor = Math.min(timing.startViewIndex, viewRuns.length - 1);
+    const endAnchor = Math.max(startAnchor, viewRuns.length - 2);
+    let previousTime = viewRuns[0].scheduledAt.getTime();
+
+    const coordinatedRuns = originalRuns.map((run, index) => {
+      const progress = originalRuns.length === 1 ? 0 : index / (originalRuns.length - 1);
+      const anchorIndex = Math.min(
+        viewRuns.length - 1,
+        Math.round(startAnchor + progress * (endAnchor - startAnchor)),
+      );
+      const anchorTime = viewRuns[anchorIndex].scheduledAt.getTime();
+      const delayMinutes = timing.minDelay + Math.random() * (timing.maxDelay - timing.minDelay);
+      const organicJitterMinutes = index === 0 ? 0 : Math.random() * 8;
+      const scheduledTime = Math.max(
+        anchorTime + (delayMinutes + organicJitterMinutes) * 60_000,
+        previousTime + (index === 0 ? 1 : 5) * 60_000,
+      );
+      previousTime = scheduledTime;
+      const scheduledAt = new Date(scheduledTime);
+
+      return {
+        ...run,
+        runNumber: index + 1,
+        scheduledAt,
+        dayOfWeek: scheduledAt.getDay(),
+        hourOfDay: scheduledAt.getHours(),
+      };
+    });
+
+    return {
+      ...schedule,
+      runs: coordinatedRuns,
+      totalDuration: coordinatedRuns.length > 1
+        ? coordinatedRuns[coordinatedRuns.length - 1].scheduledAt.getTime() - coordinatedRuns[0].scheduledAt.getTime()
+        : 0,
+      warnings: [...schedule.warnings, 'Coordinated with Views reach for full-engagement delivery'],
+    };
+  });
+}
+
 // Provider minimum order quantity FALLBACKS (actual values come from service table via minQuantity prop)
 // These are last-resort defaults only — real min comes from DB service.min_quantity
 export const PROVIDER_MINIMUMS: Record<string, number> = {
@@ -1238,7 +1314,7 @@ export function generateAllOrganicSchedules(
   startTime: Date = new Date(),
   defaultTimeLimitHours?: number
 ): FullOrganicConfig[] {
-  return engagements
+  const schedules = engagements
     .filter(e => e.enabled && e.quantity > 0)
     .map(e => generateOrganicSchedule(
       e.type,
@@ -1250,6 +1326,7 @@ export function generateAllOrganicSchedules(
       e.serviceMinimum,
       e.timeLimitHours ?? defaultTimeLimitHours
     ));
+  return coordinateEngagementSchedules(schedules);
 }
 
 /**

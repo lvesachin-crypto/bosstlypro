@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/hooks/useAuth";
@@ -47,13 +47,13 @@ export default function CoreOrders() {
     queryKey: ["orders", user?.id],
     queryFn: api.getOrders,
     enabled: Boolean(user?.id),
-    staleTime: 10_000,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
     refetchInterval: (query) =>
       query.state.data?.some((order) => {
         const status = text(order.status).toLowerCase();
         return status === "pending" || status === "processing";
-      }) ? 10_000 : false,
+      }) ? 30_000 : false,
   });
 
   const handleManualRefresh = async () => {
@@ -62,18 +62,21 @@ export default function CoreOrders() {
     setIsRefreshing(false);
   };
 
-  const filteredOrders = orders.filter((order) => {
-    const service = serviceFor(order);
-    const orderNumber = text(value(order, "order_number", "orderNumber"), text(order.id));
-    const link = text(order.link);
-    const serviceName = text(service?.name);
-    return (
-      (orderNumber.includes(searchQuery) ||
-        link.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        serviceName.toLowerCase().includes(searchQuery.toLowerCase())) &&
-      (statusFilter === "All" || text(order.status).toLowerCase() === statusFilter)
-    );
-  });
+  const filteredOrders = useMemo(() => {
+    const normalizedSearch = searchQuery.toLowerCase();
+    return orders.filter((order) => {
+      const service = serviceFor(order);
+      const orderNumber = text(value(order, "order_number", "orderNumber"), text(order.id));
+      const link = text(order.link);
+      const serviceName = text(service?.name);
+      return (
+        (orderNumber.includes(searchQuery) ||
+          link.toLowerCase().includes(normalizedSearch) ||
+          serviceName.toLowerCase().includes(normalizedSearch)) &&
+        (statusFilter === "All" || text(order.status).toLowerCase() === statusFilter)
+      );
+    });
+  }, [orders, searchQuery, statusFilter]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -115,7 +118,7 @@ export default function CoreOrders() {
         {hasProcessingOrders && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-secondary/30 px-4 py-2 rounded-lg" data-testid="status-orders-auto-refresh">
             <Loader2 className="h-4 w-4 animate-spin text-warning" />
-            <span>Auto-refreshing every 10 seconds while orders are processing...</span>
+            <span>Auto-refreshing every 30 seconds while orders are processing...</span>
           </div>
         )}
 

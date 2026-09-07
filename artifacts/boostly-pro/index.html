@@ -230,14 +230,16 @@
 
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log('Boostly Pro: Service Worker Registered'))
-          .catch(err => console.log('SW Registration failed:', err));
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => registration.unregister());
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(keys => {
+        keys.filter(key => key.includes('whopautopailot') || key.includes('boostly')).forEach(key => caches.delete(key));
       });
     }
   </script>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
 
 <body>
