@@ -540,16 +540,8 @@ export function TypeHistoryCard({
                         </div>
                       </div>
 
-                      {/* Right Side - Provider Name + ID & Edit */}
+                      {/* Right Side - Provider Order ID & Edit */}
                       <div className="flex items-center gap-4">
-                        {/* Provider Account Name */}
-                        {run.provider_account_name && !isAutoCompletedCancel && (
-                          <div className="text-right">
-                            <p className="text-xs text-muted-foreground uppercase">Provider</p>
-                            <p className="text-sm font-bold text-purple-400">{run.provider_account_name}</p>
-                          </div>
-                        )}
-
                         {run.provider_order_id && !isAutoCompletedCancel && (
                           <div className="text-right">
                             <p className="text-xs text-muted-foreground uppercase">Order ID</p>

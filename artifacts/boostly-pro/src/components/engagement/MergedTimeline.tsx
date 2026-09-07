@@ -367,13 +367,6 @@ export function MergedTimeline({ runs, onEditRun, nextRun, onRefresh, typeTarget
                         )}
                       </div>
 
-                      {/* Provider source badge - shows where this came from */}
-                      {run.provider_account_name && !isAutoCompletedCancel && (
-                        <Badge className="bg-purple-500/20 text-purple-400 border border-purple-500/40 text-xs truncate max-w-[200px] sm:max-w-none">
-                          via {run.provider_account_name}
-                        </Badge>
-                      )}
-
                       {/* CUMULATIVE TOTAL - Teal */}
                       {isCompleted && run.cumulativeAtThisPoint > 0 && (
                         <div className="flex items-center gap-1.5 bg-teal-500/20 border border-teal-500/40 px-3 py-1 rounded-lg">
@@ -533,16 +526,8 @@ export function MergedTimeline({ runs, onEditRun, nextRun, onRefresh, typeTarget
                     )}
                   </div>
 
-                  {/* Provider Name + ID + Actions */}
+                  {/* Provider Order ID + Actions */}
                   <div className="flex flex-row sm:flex-col items-center sm:items-end gap-2 shrink-0 flex-wrap">
-                    {/* Provider/Service Name - visible to all users */}
-                    {run.provider_account_name && !isAutoCompletedCancel && (
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground uppercase">Provider</p>
-                        <p className="text-sm font-bold text-purple-400">{run.provider_account_name}</p>
-                      </div>
-                    )}
-
                     {run.provider_order_id && !isAutoCompletedCancel && (
                       <div className="text-right">
                         <p className="text-xs text-muted-foreground uppercase">Order ID</p>
