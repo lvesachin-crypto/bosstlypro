@@ -428,7 +428,7 @@ export function TypeHistoryCard({
                   if (run.status === 'cancelled') return isAutoCompletedCancel ? 'Completed' : 'CANCELLED';
                   if (isFailed) return 'FAILED';
                   if (isUpcoming) return 'Scheduled';
-                  if (isPending) return "'''Do not make any visual modifications. The phrases I write are commands to understand what I want, not to be written down. Understand their content well, then execute what is required.'''\n                                            \n                                            are hindi me bol ase kre de sytem ko cron job me syd jyda clius kahta hai to postqrl kake kuch hota usme credir nhi khta hai mere webste pr jyda credt jaa rhahi lovbale k sahi r";
+                  if (isPending) return 'Pending';
                   if (isCompleted) return 'Completed';
                   return run.status.toUpperCase();
                 };
@@ -540,8 +540,15 @@ export function TypeHistoryCard({
                         </div>
                       </div>
 
-                      {/* Right Side - Provider Order ID & Edit */}
+                      {/* Right Side - Provider Name + Order ID & Edit */}
                       <div className="flex items-center gap-4">
+                        {run.provider_account_name && !isAutoCompletedCancel && (
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground uppercase">Provider</p>
+                            <p className="text-sm font-bold text-purple-400">{run.provider_account_name}</p>
+                          </div>
+                        )}
+
                         {run.provider_order_id && !isAutoCompletedCancel && (
                           <div className="text-right">
                             <p className="text-xs text-muted-foreground uppercase">Order ID</p>
