@@ -7,6 +7,7 @@ import legacyProvidersRouter from "./legacyProviders";
 import legacyMutationsRouter from "./legacyMutations";
 import legacyRpcRouter from "./legacyRpc";
 import legacyEngagementOrdersRouter from "./legacyEngagementOrders";
+import adminProviderAccountsRouter from "./adminProviderAccounts";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(legacyProvidersRouter);
 router.use(legacyMutationsRouter);
 router.use(legacyRpcRouter);
 router.use(legacyEngagementOrdersRouter);
+router.use(adminProviderAccountsRouter);
 
 export default router;

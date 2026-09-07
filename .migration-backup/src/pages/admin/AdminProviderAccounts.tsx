@@ -1,522 +1,341 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Edit, Trash2, Key, Clock, Link as LinkIcon, ArrowLeft } from "lucide-react";
+import { RefreshCw, Activity, Link as LinkIcon, Save, Clock, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { useNavigate } from "react-router-dom";
 
-interface ProviderAccount {
+interface Account {
   id: string;
-  provider_id: string;
+  user_id: string;
+  email: string;
   name: string;
-  api_key: string;
   api_url: string;
+  api_key_hint: string;
   priority: number;
   is_active: boolean;
-  last_used_at: string | null;
+  balance_cached: number | null;
+  balance_currency: string | null;
+  last_tested_at: string | null;
+  last_test_ok: boolean | null;
+  last_test_error: string | null;
+  active_runs: number;
+  mapped_services: number;
   created_at: string;
   updated_at: string;
-  delivery_multiplier?: number | null;
 }
 
-interface Provider {
-  id: string;
-  name: string;
-  api_url: string;
+function PriorityCell({ account, onSave }: { account: Account, onSave: (id: string, p: number) => void }) {
+  const [val, setVal] = useState(account.priority.toString());
+  const [lastPropVal, setLastPropVal] = useState(account.priority.toString());
+
+  useEffect(() => {
+    if (account.priority.toString() !== lastPropVal) {
+      setVal(account.priority.toString());
+      setLastPropVal(account.priority.toString());
+    }
+  }, [account.priority, lastPropVal]);
+
+  const changed = val !== account.priority.toString();
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input 
+        type="number" 
+        className="w-16 h-8 text-center px-1" 
+        value={val} 
+        onChange={e => setVal(e.target.value)} 
+      />
+      {changed && (
+        <Button 
+          size="icon" 
+          variant="ghost" 
+          className="h-8 w-8 text-primary" 
+          onClick={() => {
+            const num = parseInt(val, 10);
+            if (!isNaN(num)) {
+              onSave(account.id, num);
+            }
+          }}
+        >
+          <Save className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  );
 }
 
 export default function AdminProviderAccounts() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    provider_id: "",
-    name: "",
-    api_key: "",
-    api_url: "",
-    priority: 1,
-    is_active: true,
-    delivery_multiplier: 1,
-  });
 
-  // Fetch providers for dropdown
-  const { data: providers } = useQuery({
-    queryKey: ["providers"],
+  const { data: accounts = [], isLoading, isError, error } = useQuery({
+    queryKey: ["admin-provider-accounts"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("providers")
-        .select("id, name, api_url")
-        .eq("is_active", true);
-      if (error) throw error;
-      return data as Provider[];
+      const { data, error } = await supabase.functions.invoke("admin-provider-accounts", {
+        body: { op: "list" },
+      });
+      if (error) throw new Error(error.message || "Failed to load accounts");
+      return (data?.accounts || []) as Account[];
     },
+    refetchInterval: 30000,
   });
 
-  // Fetch provider accounts
-  const { data: accounts, isLoading } = useQuery({
-    queryKey: ["provider-accounts"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("provider_accounts")
-        .select("*")
-        .order("provider_id", { ascending: true })
-        .order("priority", { ascending: true });
-      if (error) throw error;
-      return data as ProviderAccount[];
+  const updateMutation = useMutation({
+    mutationFn: async (payload: { id: string; priority?: number; is_active?: boolean }) => {
+      const { data, error } = await supabase.functions.invoke("admin-provider-accounts", {
+        body: { op: "update", ...payload },
+      });
+      if (error) throw new Error(error.message || "Failed to update account");
+      return data;
     },
-  });
-
-  // Create/Update mutation
-  const saveMutation = useMutation({
-    mutationFn: async (data: typeof formData & { id?: string }) => {
-      if (data.id) {
-        // Update
-        const { error } = await supabase
-          .from("provider_accounts")
-          .update({
-            provider_id: data.provider_id,
-            name: data.name,
-            api_key: data.api_key,
-            api_url: data.api_url,
-            priority: data.priority,
-            is_active: data.is_active,
-            delivery_multiplier: data.delivery_multiplier,
-          })
-          .eq("id", data.id);
-        if (error) throw error;
-      } else {
-        // Create
-        const { error } = await supabase
-          .from("provider_accounts")
-          .insert({
-            provider_id: data.provider_id,
-            name: data.name,
-            api_key: data.api_key,
-            api_url: data.api_url,
-            priority: data.priority,
-            is_active: data.is_active,
-            delivery_multiplier: data.delivery_multiplier,
-          });
-        if (error) throw error;
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-provider-accounts"] });
+      if (variables.priority !== undefined) {
+        toast.success("Priority saved");
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["provider-accounts"] });
-      toast.success(editingAccount ? "Account updated!" : "Account created!");
-      setIsDialogOpen(false);
-      resetForm();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to save account");
-    },
-  });
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const account = accounts?.find(a => a.id === id);
-      if (!account) throw new Error("Account not found");
-
-      // Nullify references in organic_run_schedule
-      const { error: refError } = await supabase
-        .from("organic_run_schedule")
-        .update({ provider_account_id: null })
-        .eq("provider_account_id", id);
-      if (refError) throw refError;
-
-      // Delete service_provider_mapping for this account
-      const { error: mapError } = await supabase
-        .from("service_provider_mapping")
-        .delete()
-        .eq("provider_account_id", id);
-      if (mapError) throw mapError;
-
-      // Delete the provider account
-      const { error } = await supabase
-        .from("provider_accounts")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
-
-      // Check if any other accounts remain for this provider_id
-      const { data: remainingAccounts } = await supabase
-        .from("provider_accounts")
-        .select("id")
-        .eq("provider_id", account.provider_id)
-        .limit(1);
-
-      // If no accounts left, clean up all services of this provider
-      if (!remainingAccounts?.length) {
-        const { data: services } = await supabase
-          .from("services")
-          .select("id")
-          .eq("provider_id", account.provider_id);
-
-        if (services?.length) {
-          const serviceIds = services.map(s => s.id);
-          // Batch nullify all FK references
-          await Promise.all([
-            ...serviceIds.map(sid => supabase.from("bundle_items").update({ service_id: null }).eq("service_id", sid)),
-            ...serviceIds.map(sid => supabase.from("engagement_order_items").update({ service_id: null }).eq("service_id", sid)),
-            ...serviceIds.map(sid => supabase.from("service_provider_mapping").delete().eq("service_id", sid)),
-          ]);
-          // Delete all services
-          await supabase.from("services").delete().eq("provider_id", account.provider_id);
-        }
-        // Delete the provider itself
-        await supabase.from("providers").delete().eq("id", account.provider_id);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["provider-accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["providers"] });
-      toast.success("Account and all associated services have been removed!");
-    },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete account");
-    },
-  });
-
-  // Toggle active status
-  const toggleMutation = useMutation({
-    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
-        .from("provider_accounts")
-        .update({ is_active })
-        .eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["provider-accounts"] });
-    },
-  });
-
-  const resetForm = () => {
-    setFormData({
-      provider_id: "",
-      name: "",
-      api_key: "",
-      api_url: "",
-      priority: 1,
-      is_active: true,
-      delivery_multiplier: 1,
-    });
-    setEditingAccount(null);
-  };
-
-  const openEditDialog = (account: ProviderAccount) => {
-    setEditingAccount(account);
-    setFormData({
-      provider_id: account.provider_id,
-      name: account.name,
-      api_key: account.api_key,
-      api_url: account.api_url,
-      priority: account.priority,
-      is_active: account.is_active,
-      delivery_multiplier: Number(account.delivery_multiplier ?? 1),
-    });
-    setIsDialogOpen(true);
-  };
-
-  const handleProviderChange = (providerId: string) => {
-    const provider = providers?.find(p => p.id === providerId);
-    setFormData(prev => ({
-      ...prev,
-      provider_id: providerId,
-      api_url: provider?.api_url || prev.api_url,
-    }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveMutation.mutate({ ...formData, id: editingAccount?.id });
-  };
-
-  const maskApiKey = (key: string) => {
-    if (key.length <= 8) return "***";
-    return `${key.slice(0, 4)}...${key.slice(-4)}`;
-  };
-
-  // Group accounts by provider
-  const groupedAccounts = accounts?.reduce((acc, account) => {
-    if (!acc[account.provider_id]) {
-      acc[account.provider_id] = [];
+    onError: (err: any) => {
+      toast.error(err.message || "Update failed");
     }
-    acc[account.provider_id].push(account);
-    return acc;
-  }, {} as Record<string, ProviderAccount[]>);
+  });
+
+  const refreshBalanceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.functions.invoke("admin-provider-accounts", {
+        body: { op: "refresh_balance", id },
+      });
+      if (error) throw new Error(error.message || "Failed to refresh balance");
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Balance refreshed");
+      queryClient.invalidateQueries({ queryKey: ["admin-provider-accounts"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Balance refresh failed");
+    }
+  });
+
+  const uniqueCurrencies = new Set(accounts.filter(a => a.balance_currency).map(a => a.balance_currency));
+  const isSingleCurrency = uniqueCurrencies.size === 1;
+  const currency = isSingleCurrency ? Array.from(uniqueCurrencies)[0] : null;
+  const totalBalance = isSingleCurrency ? accounts.reduce((acc, a) => acc + (a.balance_cached || 0), 0) : null;
+  const activeCount = accounts.filter(a => a.is_active).length;
+  const totalActiveRuns = accounts.reduce((acc, a) => acc + a.active_runs, 0);
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="p-4 md:p-6 space-y-6">
+          <div className="animate-pulse space-y-4">
+             <div className="h-8 w-64 bg-muted rounded" />
+             <div className="h-24 bg-muted rounded-xl" />
+             <div className="h-[400px] bg-muted rounded-xl" />
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <DashboardLayout>
+        <div className="p-4 md:p-6">
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="flex flex-col items-center py-10 text-destructive">
+              <AlertCircle className="h-10 w-10 mb-4" />
+              <h3 className="text-lg font-semibold">Error Loading Accounts</h3>
+              <p className="text-sm mt-1">{error instanceof Error ? error.message : "Unknown error"}</p>
+              <Button variant="outline" className="mt-4" onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-provider-accounts"] })}>
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
       <div className="space-y-6 p-4 md:p-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/admin")}
-              className="shrink-0"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold">Provider Accounts</h1>
-              <p className="text-sm text-muted-foreground">
-                Manage multiple API keys for round-robin provider rotation
-              </p>
-            </div>
-          </div>
-          
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) resetForm();
-          }}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Account
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <form onSubmit={handleSubmit}>
-                <DialogHeader>
-                  <DialogTitle>{editingAccount ? "Edit" : "Add"} Provider Account</DialogTitle>
-                  <DialogDescription>
-                    Add multiple API keys for the same provider to enable round-robin delivery
-                  </DialogDescription>
-                </DialogHeader>
-                
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Base Provider (ID)</Label>
-                    <Input
-                      placeholder="e.g., yoyo, dreepfed, justanother"
-                      value={formData.provider_id}
-                      onChange={(e) => setFormData(prev => ({ ...prev, provider_id: e.target.value }))}
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">You can enter any custom provider ID</p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Account Name</Label>
-                    <Input
-                      placeholder="e.g., YOYO Account 2"
-                      value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>API Key</Label>
-                    <Input
-                      type="password"
-                      placeholder="Enter API key"
-                      value={formData.api_key}
-                      onChange={(e) => setFormData(prev => ({ ...prev, api_key: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>API URL</Label>
-                    <Input
-                      placeholder="https://api.provider.com"
-                      value={formData.api_url}
-                      onChange={(e) => setFormData(prev => ({ ...prev, api_url: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Priority (lower = used first)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={formData.priority}
-                      onChange={(e) => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) || 1 }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Delivery Multiplier (over-delivery factor)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min={0.5}
-                      max={5}
-                      value={formData.delivery_multiplier}
-                      onChange={(e) => setFormData(prev => ({ ...prev, delivery_multiplier: parseFloat(e.target.value) || 1 }))}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      If this provider delivers 2x extra (e.g. 2000 for a 1000 order), set <strong>2.0</strong>. The system will automatically send half the quantity. Default: <strong>1.0</strong>
-                    </p>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="is_active"
-                      checked={formData.is_active}
-                      onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
-                    />
-                    <Label htmlFor="is_active">Active</Label>
-                  </div>
-                </div>
-                
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={saveMutation.isPending}>
-                    {saveMutation.isPending ? "Saving..." : "Save"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Provider Operations</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Monitor and manage active provider routing. Accounts rotate lowest-number-first.
+          </p>
         </div>
 
-        {/* Info Card */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4">
-            <p className="text-sm text-primary-foreground/80">
-              <strong>Round-Robin System:</strong> Add multiple accounts for the same provider. 
-              When sending orders, the system will automatically rotate between accounts 
-              using LRU (Least Recently Used) selection to prevent "active order on this link" errors.
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Accounts List */}
-        {isLoading ? (
-          <div className="text-center py-10 text-muted-foreground">Loading...</div>
-        ) : !accounts?.length ? (
+        <div className="grid gap-4 md:grid-cols-4">
           <Card>
-            <CardContent className="py-10 text-center text-muted-foreground">
-              No provider accounts yet. Click "Add Account" to create one.
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Accounts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{accounts.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Active Accounts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">{activeCount}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Current Active Runs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalActiveRuns}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Combined Balance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isSingleCurrency ? (
+                <div className="text-2xl font-bold">
+                  {new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(totalBalance || 0)}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground pt-1 font-medium">
+                  {uniqueCurrencies.size === 0 ? "No balances available" : "Multiple currencies mixed"}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {!accounts.length ? (
+          <Card className="border-dashed">
+            <CardContent className="py-10 text-center flex flex-col items-center">
+              <Activity className="h-10 w-10 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium">No Provider Accounts Found</h3>
+              <p className="text-muted-foreground text-sm max-w-sm mt-1">
+                Tenants can add their provider credentials from "My Providers" in their dashboard.
+              </p>
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-6">
-            {Object.entries(groupedAccounts || {}).map(([providerId, providerAccounts]) => (
-              <Card key={providerId}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    {providers?.find(p => p.id === providerId)?.name || providerId}
-                    <Badge variant="secondary">{providerAccounts.length} accounts</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>API Key</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Last Used</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {providerAccounts.map((account) => (
-                        <TableRow key={account.id}>
-                          <TableCell className="font-medium">{account.name}</TableCell>
-                          <TableCell>
-                            <code className="text-xs bg-muted px-2 py-1 rounded">
-                              {maskApiKey(account.api_key)}
-                            </code>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">#{account.priority}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            {account.last_used_at ? (
-                              <span className="text-sm text-muted-foreground flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {formatDistanceToNow(new Date(account.last_used_at), { addSuffix: true })}
-                              </span>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">Never</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Switch
-                              checked={account.is_active}
-                              onCheckedChange={(checked) => 
-                                toggleMutation.mutate({ id: account.id, is_active: checked })
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openEditDialog(account)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => {
-                                  if (confirm("Delete this account?")) {
-                                    deleteMutation.mutate(account.id);
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="rounded-md border bg-card overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Account</TableHead>
+                  <TableHead>API Details</TableHead>
+                  <TableHead className="w-24">Priority</TableHead>
+                  <TableHead className="w-24 text-center">Active</TableHead>
+                  <TableHead>Health Check</TableHead>
+                  <TableHead>Balance</TableHead>
+                  <TableHead className="text-right">Usage</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {accounts.map((account) => (
+                  <TableRow key={account.id} className={!account.is_active ? "opacity-60 bg-muted/20" : ""}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{account.name}</span>
+                        <span className="text-xs text-muted-foreground">{account.email}</span>
+                        <span className="text-[10px] text-muted-foreground/70">{account.user_id}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1 text-sm">
+                        <span className="truncate max-w-[200px]" title={account.api_url}>
+                          {account.api_url}
+                        </span>
+                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded w-max text-muted-foreground">
+                          {account.api_key_hint}
+                        </code>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <PriorityCell 
+                        account={account} 
+                        onSave={(id, p) => updateMutation.mutate({ id, priority: p })} 
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Switch 
+                        checked={account.is_active}
+                        onCheckedChange={(c) => updateMutation.mutate({ id: account.id, is_active: c })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1 text-sm">
+                        <div className="flex items-center gap-1.5">
+                          {account.last_test_ok ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                          ) : account.last_test_error ? (
+                            <XCircle className="h-3.5 w-3.5 text-destructive" />
+                          ) : (
+                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                          <span className={account.last_test_ok ? "text-green-600 dark:text-green-400 font-medium" : account.last_test_error ? "text-destructive font-medium" : "text-muted-foreground"}>
+                            {account.last_test_ok ? "Healthy" : account.last_test_error ? "Failing" : "Pending"}
+                          </span>
+                        </div>
+                        {account.last_tested_at && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(account.last_tested_at), { addSuffix: true })}
+                          </span>
+                        )}
+                        {account.last_test_error && (
+                          <span className="text-xs text-destructive truncate max-w-[150px]" title={account.last_test_error}>
+                            {account.last_test_error}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">
+                          {account.balance_cached !== null ? (
+                            new Intl.NumberFormat('en-US', { style: 'currency', currency: account.balance_currency || 'USD' }).format(account.balance_cached)
+                          ) : (
+                            <span className="text-muted-foreground font-normal">--</span>
+                          )}
+                        </span>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground" 
+                          onClick={() => refreshBalanceMutation.mutate(account.id)}
+                          disabled={refreshBalanceMutation.isPending && refreshBalanceMutation.variables === account.id}
+                        >
+                          <RefreshCw className={`h-3 w-3 ${refreshBalanceMutation.isPending && refreshBalanceMutation.variables === account.id ? "animate-spin" : ""}`} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-col items-end gap-1.5">
+                        <Badge variant="secondary" className="font-normal text-xs flex gap-1.5 items-center w-max">
+                          <Activity className="h-3 w-3" />
+                          {account.active_runs} runs
+                        </Badge>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <LinkIcon className="h-3 w-3" />
+                          {account.mapped_services} services
+                        </span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
-
-        {/* Service Mapping Link */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Service Provider Mapping</CardTitle>
-            <CardDescription>
-              Link services to multiple provider accounts for automatic rotation
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => navigate("/admin/service-provider-mapping")}
-            >
-              <LinkIcon className="h-4 w-4" />
-              Configure Service Mappings
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     </DashboardLayout>
   );
