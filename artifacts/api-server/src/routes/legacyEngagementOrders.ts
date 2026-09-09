@@ -9,10 +9,12 @@ router.use(requireAuth);
 
 const scheduledRunSchema = z.object({
   scheduled_at: z.string().datetime(),
-  quantity_to_send: z.coerce.number().int().positive(),
-  base_quantity: z.coerce.number().int().positive().optional(),
+  // nonnegative: the frontend filters zeros before sending, but accept 0 as a
+  // safety net — zero-quantity runs are dropped server-side before processing.
+  quantity_to_send: z.coerce.number().int().nonnegative(),
+  base_quantity: z.coerce.number().int().nonnegative().optional(),
   variance_applied: z.coerce.number().int().optional(),
-  peak_multiplier: z.coerce.number().positive().optional(),
+  peak_multiplier: z.coerce.number().nonnegative().optional(),
 });
 
 const providerMappingSchema = z.object({
@@ -122,9 +124,28 @@ router.post("/functions/process-engagement-order", async (req, res): Promise<voi
       const providerMax = services.length
         ? Math.max(...services.map((row) => Number(row.max_quantity) || 0))
         : 0;
-      const runs = engagement.scheduled_runs?.length
+      // Drop zero-quantity runs (variance/rounding can produce them). If any are
+      // removed, redistribute the lost quantity onto the last remaining run so the
+      // scheduled total still matches engagement.quantity.
+      const rawRuns = engagement.scheduled_runs?.length
         ? engagement.scheduled_runs
         : [{
+            scheduled_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+            quantity_to_send: engagement.quantity,
+            base_quantity: engagement.quantity,
+            variance_applied: 0,
+            peak_multiplier: 1,
+          }];
+      const nonZeroRuns = rawRuns.filter((r) => r.quantity_to_send > 0);
+      const lostQty = rawRuns.reduce((s, r) => s + r.quantity_to_send, 0)
+                    - nonZeroRuns.reduce((s, r) => s + r.quantity_to_send, 0);
+      const runs = nonZeroRuns.length > 0
+        ? nonZeroRuns.map((r, i) =>
+            i === nonZeroRuns.length - 1 && lostQty > 0
+              ? { ...r, quantity_to_send: r.quantity_to_send + lostQty }
+              : r
+          )
+        : [{ // all runs were zero — fall back to a single run
             scheduled_at: new Date(Date.now() + 5 * 60_000).toISOString(),
             quantity_to_send: engagement.quantity,
             base_quantity: engagement.quantity,

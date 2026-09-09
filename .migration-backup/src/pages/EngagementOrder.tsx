@@ -544,10 +544,24 @@ export default function EngagementOrder() {
                 effectiveTimeLimit = 0;
               }
 
-              const scheduledRuns = previewSchedules[type]?.map((run, index) => ({
+              // Filter out zero-quantity runs (organic scheduler can produce them via
+              // variance/rounding). Redistribute any lost quantity onto the last run so
+              // the scheduled total always matches engagement.quantity.
+              const rawRuns = (previewSchedules[type] ?? []).map((run, index) => ({
                 ...run,
                 run_number: index + 1,
               }));
+              const filteredRuns = rawRuns.filter((run) => (run.quantity_to_send ?? 0) > 0);
+              const lostQty =
+                rawRuns.reduce((s, r) => s + (r.quantity_to_send ?? 0), 0) -
+                filteredRuns.reduce((s, r) => s + r.quantity_to_send, 0);
+              if (lostQty > 0 && filteredRuns.length > 0) {
+                filteredRuns[filteredRuns.length - 1] = {
+                  ...filteredRuns[filteredRuns.length - 1],
+                  quantity_to_send: filteredRuns[filteredRuns.length - 1].quantity_to_send + lostQty,
+                };
+              }
+              const scheduledRuns = filteredRuns.length > 0 ? filteredRuns : undefined;
 
               return {
                 type,
