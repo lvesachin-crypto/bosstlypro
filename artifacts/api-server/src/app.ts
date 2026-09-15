@@ -32,8 +32,8 @@ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 // JSON payloads for the order and schedule pages run to hundreds of kilobytes;
 // mounted after the Clerk proxy so upstream responses are passed through untouched.
 app.use(compression({ threshold: 1024 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use(clerkMiddleware((req) => ({
   publishableKey: publishableKeyFromHost(getClerkProxyHost(req) ?? "", process.env.CLERK_PUBLISHABLE_KEY),
 })));
