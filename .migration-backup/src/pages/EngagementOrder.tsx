@@ -544,9 +544,14 @@ export default function EngagementOrder() {
                 effectiveTimeLimit = 0;
               }
 
-              // Filter out zero-quantity runs (organic scheduler can produce them via
-              // variance/rounding). Redistribute any lost quantity onto the last run so
-              // the scheduled total always matches engagement.quantity.
+              // Build scheduled runs, filtering out zero-quantity entries (organic
+              // scheduler can produce them via variance/rounding) and redistributing
+              // any lost quantity onto the last run.
+              // IMPORTANT: if the preview schedule is stale (user changed quantities
+              // after the preview was generated), its run totals won't match
+              // config.quantity. In that case we drop the schedule entirely and let
+              // the server create a single clean run — this avoids the
+              // "schedule quantity does not match its order quantity" error.
               const rawRuns = (previewSchedules[type] ?? []).map((run, index) => ({
                 ...run,
                 run_number: index + 1,
@@ -561,7 +566,13 @@ export default function EngagementOrder() {
                   quantity_to_send: filteredRuns[filteredRuns.length - 1].quantity_to_send + lostQty,
                 };
               }
-              const scheduledRuns = filteredRuns.length > 0 ? filteredRuns : undefined;
+              // Final safety check: only use the schedule if it sums exactly to the
+              // order quantity. Any mismatch means the schedule is stale.
+              const filteredTotal = filteredRuns.reduce((s, r) => s + r.quantity_to_send, 0);
+              const scheduledRuns =
+                filteredRuns.length > 0 && filteredTotal === config.quantity
+                  ? filteredRuns
+                  : undefined;
 
               return {
                 type,
