@@ -1,7 +1,7 @@
 import { API_BASE, apiUrl } from "@/lib/apiBase";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useSignIn, useSignUp, useUser } from "@clerk/react";
+import { useAuth } from "@/hooks/useAuth";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Loader2, Mail } from "lucide-react";
 import { z } from "zod";
 import logo from "@/assets/logo.png";
@@ -29,9 +29,15 @@ function errorMessage(error: unknown) {
 export default function Auth() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isLoaded: userLoaded, isSignedIn } = useUser();
-  const { signIn } = useSignIn();
-  const { signUp } = useSignUp();
+  const { user, isLoading } = useAuth();
+  const userLoaded = !isLoading;
+  const isSignedIn = !!user;
+  const post = async (path: string, body: unknown) => {
+    const r = await fetch(apiUrl(path), { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
+    const b = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) throw new Error(b.error || "Something went wrong. Please try again.");
+    window.dispatchEvent(new Event("boostly:auth-changed"));
+  };
   const [mode, setMode] = useState<AuthMode>(location.pathname.includes("/sign-up") ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -65,45 +71,11 @@ export default function Auth() {
     setIsSubmitting(true);
     try {
       if (mode === "login") {
-        const values = loginSchema.parse({ email, password });
-        const legacyResponse = await fetch(apiUrl("/auth/legacy-login"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
-        });
-        if (legacyResponse.ok) {
-          const { ticket } = (await legacyResponse.json()) as { ticket: string };
-          const { error: ticketError } = await signIn.ticket({ ticket });
-          if (ticketError) throw ticketError;
-        } else if (legacyResponse.status === 404) {
-          const { error: signInError } = await signIn.password({ identifier: values.email, password: values.password });
-          if (signInError) throw signInError;
-        } else {
-          const body = (await legacyResponse.json().catch(() => ({}))) as { error?: string };
-          throw new Error(body.error || "Sign in failed.");
-        }
-        if (signIn.status === "complete") {
-          const { error: finalizeError } = await signIn.finalize();
-          if (finalizeError) throw finalizeError;
-          navigate("/engagement-order", { replace: true });
-        } else {
-          throw new Error(`Sign in requires another step (${signIn.status}).`);
-        }
+        await post("/auth/login", loginSchema.parse({ email, password }));
       } else {
-        const values = signupSchema.parse({ email, password, fullName });
-        // The name travels as metadata: Clerk rejects first_name/last_name
-        // unless the instance has the "Name" attribute enabled, and the
-        // production instance does not. The API copies it into the profile.
-        const { error: signUpError } = await signUp.password({
-          emailAddress: values.email,
-          password: values.password,
-          unsafeMetadata: { fullName: values.fullName.trim() },
-        });
-        if (signUpError) throw signUpError;
-        const { error: sendCodeError } = await signUp.verifications.sendEmailCode();
-        if (sendCodeError) throw sendCodeError;
-        setMode("verify");
+        await post("/auth/signup", signupSchema.parse({ email, password, fullName }));
       }
+      navigate("/engagement-order", { replace: true });
     } catch (cause) {
       if (cause instanceof z.ZodError) setError(cause.issues[0]?.message || "Please check your details.");
       else setError(errorMessage(cause));
@@ -117,11 +89,6 @@ export default function Auth() {
     clearMessages();
     setIsSubmitting(true);
     try {
-      const { error: verifyError } = await signUp.verifications.verifyEmailCode({ code: code.trim() });
-      if (verifyError) throw verifyError;
-      if (signUp.status !== "complete") throw new Error("Verification is not complete.");
-      const { error: finalizeError } = await signUp.finalize();
-      if (finalizeError) throw finalizeError;
       navigate("/engagement-order", { replace: true });
     } catch (cause) {
       setError(errorMessage(cause));
@@ -135,13 +102,8 @@ export default function Auth() {
     clearMessages();
     setIsSubmitting(true);
     try {
-      const parsedEmail = z.string().trim().email("Enter a valid email address").parse(email);
-      const { error: createError } = await signIn.create({ identifier: parsedEmail });
-      if (createError) throw createError;
-      const { error: sendCodeError } = await signIn.resetPasswordEmailCode.sendCode();
-      if (sendCodeError) throw sendCodeError;
-      setMode("reset");
-      setSuccessMessage("Reset code sent. Check your inbox.");
+      z.string().trim().email("Enter a valid email address").parse(email);
+      throw new Error("Password reset ke liye Telegram support se contact karein.");
     } catch (cause) {
       setError(cause instanceof z.ZodError ? cause.issues[0].message : errorMessage(cause));
     } finally {
@@ -154,14 +116,7 @@ export default function Auth() {
     clearMessages();
     setIsSubmitting(true);
     try {
-      const { error: verifyError } = await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() });
-      if (verifyError) throw verifyError;
-      const { error: passwordError } = await signIn.resetPasswordEmailCode.submitPassword({ password });
-      if (passwordError) throw passwordError;
-      if (signIn.status !== "complete") throw new Error("Password reset is not complete.");
-      const { error: finalizeError } = await signIn.finalize();
-      if (finalizeError) throw finalizeError;
-      navigate("/engagement-order", { replace: true });
+      throw new Error("Password reset ke liye Telegram support se contact karein.");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -234,7 +189,6 @@ export default function Auth() {
             {/* Mount point for Clerk's bot-protection widget on custom sign-up
                 flows; without it Clerk falls back to an invisible challenge
                 that fails to load in some browsers. */}
-            {!isLogin && <div id="clerk-captcha" className="empty:hidden" />}
             <Messages error={error} success={successMessage} />
             <SubmitButton loading={isSubmitting}>{isLogin ? "Sign in" : "Create account"}</SubmitButton>
             <p className="text-center text-[13px] text-[#999]">

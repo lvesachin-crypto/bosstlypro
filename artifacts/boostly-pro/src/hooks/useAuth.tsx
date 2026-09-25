@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useEffect, useMemo, useState, useCallback } from 'react';
-import { useUser, useClerk, useSession } from '@clerk/react';
+import { apiUrl } from '@/lib/apiBase';
 import { api } from '@/lib/api';
 
 type AppRole = 'admin' | 'moderator' | 'user';
@@ -89,9 +89,30 @@ function normalizeProfile(profile: any): Profile {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
-  const { signOut: clerkSignOut, openSignIn, openSignUp } = useClerk();
-  const { session: clerkSession } = useSession();
+  const [authUser, setAuthUser] = useState<{ id: string; email: string } | null>(null);
+  const [clerkLoaded, setClerkLoaded] = useState(false);
+  const clerkSession = authUser ? { access_token: 'legacy-cookie' } : null;
+  const clerkUser = authUser ? { id: authUser.id, primaryEmailAddress: { emailAddress: authUser.email } } : null;
+  const loadMe = useCallback(async () => {
+    try {
+      const r = await fetch(apiUrl('/auth/me'), { credentials: 'same-origin' });
+      const b = r.ok ? await r.json() : null;
+      setAuthUser(b?.user ?? null);
+    } catch { setAuthUser(null); }
+    finally { setClerkLoaded(true); }
+  }, []);
+  useEffect(() => {
+    void loadMe();
+    const h = () => void loadMe();
+    window.addEventListener('boostly:auth-changed', h);
+    return () => window.removeEventListener('boostly:auth-changed', h);
+  }, [loadMe]);
+  const openSignIn = useCallback(() => { window.location.href = '/sign-in'; }, []);
+  const openSignUp = useCallback(() => { window.location.href = '/sign-up'; }, []);
+  const clerkSignOut = useCallback(async () => {
+    await fetch(apiUrl('/auth/logout'), { method: 'POST', credentials: 'same-origin' }).catch(() => undefined);
+    setAuthUser(null);
+  }, []);
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
