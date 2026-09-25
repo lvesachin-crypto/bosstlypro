@@ -11,7 +11,8 @@
     "db:init": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f schema.sql",
     "start": "cd server && npm start",
     "dev": "cd artifacts/boostly-pro && PORT=8080 ./node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0 --port 8080",
-    "build:all": "pnpm run typecheck && pnpm -r --if-present run build"
+    "build:all": "pnpm run typecheck && pnpm -r --if-present run build",
+    "build:dev": "cd artifacts/boostly-pro && ./node_modules/.bin/vite build --config vite.config.ts && rm -rf ../../dist && cp -r dist/public ../../dist"
   },
   "private": true,
   "dependencies": {
