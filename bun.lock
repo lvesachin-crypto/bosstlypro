@@ -5,6 +5,8 @@
     "": {
       "name": "workspace",
       "dependencies": {
+        "@fontsource/manrope": "^5.3.0",
+        "@fontsource/sora": "^5.3.0",
         "@replit/connectors-sdk": "^0.4.1",
       },
       "devDependencies": {
@@ -14,6 +16,10 @@
     },
   },
   "packages": {
+    "@fontsource/manrope": ["@fontsource/manrope@5.3.0", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@fontsource/manrope/-/manrope-5.3.0.tgz", {}, "sha512-obJ1Dv3+uCA6HlHgW8u4BGYxJR9In2HW7gjJhlflEvkrj1X1iSEwu0fToL+JYGC/FEKFfIz1sBuPduvcL2gIAA=="],
+
+    "@fontsource/sora": ["@fontsource/sora@5.3.0", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@fontsource/sora/-/sora-5.3.0.tgz", {}, "sha512-SqW3OpKxxfKvxDLPlbdrWf2KooPfbd+W3jaYn483o+Y/JrmU87vjFPNptDqwP428c3vY+gnranLhjcbRaXB0Jw=="],
+
     "@replit/connectors-sdk": ["@replit/connectors-sdk@0.4.1", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@replit/connectors-sdk/-/connectors-sdk-0.4.1.tgz", {}, "sha512-iw0uy95+Qul8MPc/bBo8hBfYk1wm6RpBZ9sHyCpcA9A9T4zcUT9deSQxdyMyI0w3sv3+5uGmdfq1TpFTMrjD1g=="],
 
     "prettier": ["prettier@3.9.6", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/prettier/-/prettier-3.9.6.tgz", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
