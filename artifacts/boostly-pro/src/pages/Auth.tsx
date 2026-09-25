@@ -8,6 +8,7 @@ import logo from "@/assets/logo.png";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageMeta } from "@/components/seo/PageMeta";
+import { supabase } from "@/integrations/supabase/client";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Invalid email address"),
@@ -71,9 +72,17 @@ export default function Auth() {
     setIsSubmitting(true);
     try {
       if (mode === "login") {
-        await post("/auth/login", loginSchema.parse({ email, password }));
+        const credentials = loginSchema.parse({ email, password });
+        const cloudResult = await supabase.auth.signInWithPassword({ email: credentials.email.toLowerCase(), password: credentials.password });
+        if (cloudResult.error) throw cloudResult.error;
       } else {
-        await post("/auth/signup", signupSchema.parse({ email, password, fullName }));
+        const credentials = signupSchema.parse({ email, password, fullName });
+        const cloudResult = await supabase.auth.signUp({
+          email: credentials.email.toLowerCase(),
+          password: credentials.password,
+          options: { emailRedirectTo: window.location.origin, data: { full_name: credentials.fullName } },
+        });
+        if (cloudResult.error) throw cloudResult.error;
       }
       navigate("/engagement-order", { replace: true });
     } catch (cause) {

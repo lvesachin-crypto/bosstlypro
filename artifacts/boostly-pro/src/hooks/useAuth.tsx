@@ -1,6 +1,7 @@
 import { createContext, useContext, ReactNode, useEffect, useMemo, useState, useCallback } from 'react';
 import { apiUrl } from '@/lib/apiBase';
 import { api } from '@/lib/api';
+import { supabase } from '@/integrations/supabase/client';
 
 type AppRole = 'admin' | 'moderator' | 'user';
 type Profile = {
@@ -91,7 +92,8 @@ function normalizeProfile(profile: any): Profile {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authUser, setAuthUser] = useState<{ id: string; email: string } | null>(null);
   const [clerkLoaded, setClerkLoaded] = useState(false);
-  const clerkSession = authUser ? { access_token: 'legacy-cookie' } : null;
+  const [cloudSession, setCloudSession] = useState<any | null>(null);
+  const clerkSession = cloudSession ?? (authUser ? { access_token: 'legacy-cookie' } : null);
   const clerkUser = authUser ? { id: authUser.id, primaryEmailAddress: { emailAddress: authUser.email } } : null;
   const loadMe = useCallback(async () => {
     try {
@@ -102,15 +104,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     finally { setClerkLoaded(true); }
   }, []);
   useEffect(() => {
-    void loadMe();
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      if (data.session?.user) {
+        setCloudSession(data.session);
+        setAuthUser({ id: data.session.user.id, email: data.session.user.email ?? '' });
+        setClerkLoaded(true);
+      } else {
+        void loadMe();
+      }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      setCloudSession(session);
+      setAuthUser(session?.user ? { id: session.user.id, email: session.user.email ?? '' } : null);
+      setClerkLoaded(true);
+    });
     const h = () => void loadMe();
     window.addEventListener('boostly:auth-changed', h);
-    return () => window.removeEventListener('boostly:auth-changed', h);
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+      window.removeEventListener('boostly:auth-changed', h);
+    };
   }, [loadMe]);
   const openSignIn = useCallback(() => { window.location.href = '/sign-in'; }, []);
   const openSignUp = useCallback(() => { window.location.href = '/sign-up'; }, []);
   const clerkSignOut = useCallback(async () => {
+    await supabase.auth.signOut().catch(() => undefined);
     await fetch(apiUrl('/auth/logout'), { method: 'POST', credentials: 'same-origin' }).catch(() => undefined);
+    setCloudSession(null);
     setAuthUser(null);
   }, []);
 
@@ -131,7 +155,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = useCallback(async (userId: string, isStale: () => boolean) => {
     try {
-      const data = await api.getSession.scoped(userId);
+      const data = cloudSession
+        ? await Promise.all([
+            supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
+            supabase.from('wallets').select('*').eq('user_id', userId).maybeSingle(),
+            supabase.from('user_roles').select('role').eq('user_id', userId),
+          ]).then(([profileResult, walletResult, roleResult]) => ({
+            profile: profileResult.data,
+            wallet: walletResult.data,
+            role: roleResult.data?.some((item: any) => item.role === 'admin') ? 'admin' : roleResult.data?.[0]?.role ?? 'user',
+          }))
+        : await api.getSession.scoped(userId);
       if (isStale()) return; // the signed-in user changed while this was in flight
       const nextProfile: Profile | null = data.profile ? normalizeProfile(data.profile) : null;
       const nextRole: AppRole = data.role === 'admin' ? 'admin' : 'user';
@@ -142,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       if (!isStale()) console.error('Error fetching user data:', error);
     }
-  }, []);
+  }, [cloudSession]);
 
   useEffect(() => {
     if (!clerkLoaded) return;

@@ -76,6 +76,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.3",
     "sirv": "^3.0.2",
