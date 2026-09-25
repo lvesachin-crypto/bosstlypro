@@ -13,104 +13,7 @@ import { AppErrorBoundary } from "@/components/app/AppErrorBoundary";
 import { Loader2 } from "lucide-react";
 import { routeLoaders } from "@/lib/routePreload";
 
-import { ClerkProvider, SignIn, SignUp, useClerk } from "@clerk/react";
-import { publishableKeyFromHost } from "@clerk/react/internal";
-import { shadcn } from "@clerk/themes";
-
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-);
-
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
-}
-
-const clerkAppearance = {
-  theme: shadcn,
-  variables: {
-    colorPrimary: "hsl(221 83% 53%)",
-    colorForeground: "hsl(0 0% 8%)",
-    colorMutedForeground: "hsl(220 9% 40%)",
-    colorDanger: "hsl(358 72% 52%)",
-    colorBackground: "hsl(0 0% 100%)",
-    colorInput: "hsl(0 0% 100%)",
-    colorInputForeground: "hsl(0 0% 8%)",
-    colorNeutral: "hsl(220 13% 89%)",
-    fontFamily: "Inter, system-ui, sans-serif",
-    borderRadius: "0.75rem",
-  },
-  elements: {
-    rootBox: "w-full flex justify-center",
-    cardBox: "bg-white rounded-2xl w-[440px] max-w-full overflow-hidden",
-    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    headerTitle: "text-foreground font-bold",
-    headerSubtitle: "text-muted-foreground",
-    socialButtonsBlockButtonText: "text-foreground font-medium",
-    formFieldLabel: "text-muted-foreground font-semibold",
-    footerActionLink: "text-primary font-semibold hover:text-primary/90",
-    footerActionText: "text-muted-foreground",
-    dividerText: "text-muted-foreground text-sm",
-    identityPreviewEditButton: "text-primary hover:text-primary/90",
-    formFieldSuccessText: "text-success",
-    alertText: "text-destructive",
-  },
-};
-
-
-function ClerkQueryClientCacheInvalidator() {
-  const { addListener } = useClerk();
-  const queryClient = useQueryClient();
-  const prevUserIdRef = useRef<string | null | undefined>(undefined);
-
-  useEffect(() => {
-    const unsubscribe = addListener(({ user }) => {
-      const userId = user?.id ?? null;
-      if (
-        prevUserIdRef.current !== undefined &&
-        prevUserIdRef.current !== userId
-      ) {
-        queryClient.clear();
-      }
-      prevUserIdRef.current = userId;
-    });
-    return unsubscribe;
-  }, [addListener, queryClient]);
-
-  return null;
-}
-
-// Without pinned versions Clerk resolves "@6" / "@1" through two extra
-// redirect round trips on every page load before any script byte arrives.
-// These are the versions the redirects currently resolve to; bump them
-// together whenever @clerk/react is upgraded (see replit.md).
-const clerkPinnedVersions = {
-  __internal_clerkJSVersion: "6.31.0",
-  __internal_clerkUIVersion: "1.32.1",
-} as Record<string, string>;
-
-function ClerkProviderWithRoutes({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-  return (
-    <ClerkProvider
-      publishableKey={clerkPubKey}
-      proxyUrl={clerkProxyUrl}
-      appearance={clerkAppearance}
-      signInUrl={`${basePath}/sign-in`}
-      signUpUrl={`${basePath}/sign-up`}
-      routerPush={(to) => navigate(to)}
-      routerReplace={(to) => navigate(to, { replace: true })}
-      {...clerkPinnedVersions}
-    >
-      <ClerkQueryClientCacheInvalidator />
-      {children}
-    </ClerkProvider>
-  );
-}
 
 // Landing eager (LCP) — everything else lazy for smaller initial bundle
 import Index from "./pages/Index";
@@ -275,7 +178,6 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={basePath}>
-        <ClerkProviderWithRoutes>
           <AuthProvider>
             <CurrencyProvider>
               <TooltipProvider>
@@ -290,7 +192,6 @@ const App = () => {
               </TooltipProvider>
             </CurrencyProvider>
           </AuthProvider>
-        </ClerkProviderWithRoutes>
       </BrowserRouter>
     </QueryClientProvider>
   );

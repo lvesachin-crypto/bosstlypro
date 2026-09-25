@@ -12,7 +12,6 @@ import {
   walletsTable,
 } from "../db";
 import { z } from "zod";
-import { clerkClient } from "@clerk/express";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -22,24 +21,17 @@ function userId(req: AuthenticatedRequest): string {
   return req.userId;
 }
 
-/** JIT provisioning replaces the former Supabase auth.users trigger. */
+/** Copies the account's legacy profile/wallet/role into the app tables on first use. */
 const accountCache = new Map<string, { expiresAt: number; value: Promise<string | null> }>();
 
-// Sign-up stores the chosen name in unsafe metadata because the Clerk
-// instance has no first/last name attribute; it becomes the profile name.
-function signUpFullName(user: { unsafeMetadata?: Record<string, unknown> | null }): string | null {
-  const value = user.unsafeMetadata?.fullName;
-  return typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : null;
-}
-
 async function provisionAccount(id: string): Promise<string | null> {
-  const clerkUser = await clerkClient.users.getUser(id);
-  const clerkName = clerkUser.fullName ?? signUpFullName(clerkUser);
-  const email =
-    clerkUser.emailAddresses.find((address) => address.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
-    clerkUser.emailAddresses[0]?.emailAddress ??
-    `${id}@clerk.local`;
-  const legacyId = clerkUser.externalId ?? null;
+  const authUser = await pool.query<{ email: string; full_name: string | null }>(
+    "SELECT email, raw_user_meta_data->>'full_name' AS full_name FROM lovable_legacy.auth_users WHERE id=$1::uuid",
+    [id],
+  );
+  const email = authUser.rows[0]?.email ?? `${id}@local`;
+  const clerkName = authUser.rows[0]?.full_name || null;
+  const legacyId = authUser.rows[0] ? id : null;
   const legacy = legacyId
     ? await pool.query<{
         full_name: string | null;

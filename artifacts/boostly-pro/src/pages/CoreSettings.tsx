@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useClerk, useUser } from "@clerk/react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { PageMeta } from "@/components/seo/PageMeta";
@@ -32,8 +31,7 @@ type RatioKey = keyof typeof initialRatios;
 
 export default function CoreSettings() {
   const { profile, refreshProfile, signOut, isLoading } = useAuth();
-  const { user } = useUser();
-  const { openUserProfile } = useClerk();
+  const user: any = null;
   const navigate = useNavigate();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [fullName, setFullName] = useState("");
@@ -141,7 +139,7 @@ export default function CoreSettings() {
           </div><Button onClick={save} disabled={isSaving} className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 shadow-lg shadow-primary/20 font-bold">{isSaving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Save className="h-5 w-5 mr-2" />}Save AI Configuration</Button>
         </CardContent></Card>
 
-      <Card className="glass-card border-2 border-border"><CardHeader><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center"><Shield className="h-5 w-5 text-warning" /></div><div><CardTitle>Change Password</CardTitle><CardDescription>Update your account password</CardDescription></div></div></CardHeader><CardContent className="space-y-5"><p className="text-sm text-muted-foreground">Password and sign-in security are managed by Clerk.</p><Button onClick={() => openUserProfile()} variant="outline" className="h-11 px-6 rounded-xl border-2"><Shield className="h-4 w-4 mr-2" />Manage Password</Button></CardContent></Card>
+      <Card className="glass-card border-2 border-border"><CardHeader><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center"><Shield className="h-5 w-5 text-warning" /></div><div><CardTitle>Change Password</CardTitle><CardDescription>Update your account password</CardDescription></div></div></CardHeader><CardContent className="space-y-5"><p className="text-sm text-muted-foreground">Password change karne ke liye Telegram support se contact karein.</p></CardContent></Card>
       <Card className="glass-card border-2 border-destructive/30"><CardContent className="p-5"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"><div><h3 className="font-bold text-foreground">Sign Out</h3><p className="text-sm text-muted-foreground">Sign out from your account on this device</p></div><Button variant="destructive" onClick={async () => { await signOut(); navigate("/auth"); }} className="h-11 px-6 rounded-xl"><LogOut className="h-4 w-4 mr-2" />Sign Out</Button></div></CardContent></Card>
     </div>
   </DashboardLayout>;
