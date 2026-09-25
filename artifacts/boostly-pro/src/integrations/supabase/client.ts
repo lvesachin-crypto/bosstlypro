@@ -1,3 +1,4 @@
+import { API_BASE, apiUrl } from "@/lib/apiBase";
 /**
  * Small authenticated PostgREST-shaped reader for restored legacy screens.
  * It intentionally exposes no browser database credentials. The small write
@@ -38,7 +39,7 @@ class LegacyQuery implements PromiseLike<Result> {
   range(from: number, to: number): this { this.page = { from, to }; return this; }
   async execute(): Promise<Result> {
     try {
-      const response = await fetch(this.mutation ? "/api/legacy/mutate" : "/api/legacy/query", {
+      const response = await fetch(apiUrl(this.mutation ? "/legacy/mutate" : "/legacy/query"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -81,7 +82,7 @@ export const supabase: any = {
       return unavailable("This legacy RPC is unavailable through the current API.");
     }
     try {
-      const response = await fetch("/api/legacy/rpc", {
+      const response = await fetch(apiUrl("/legacy/rpc"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -97,8 +98,8 @@ export const supabase: any = {
   functions: {
     invoke: async (name: string, options?: { body?: unknown; headers?: Record<string, string> }) => {
       const functionPaths: Record<string, string> = {
-        "user-provider-manage": "/api/functions/user-provider-manage",
-        "process-engagement-order": "/api/functions/process-engagement-order",
+        "user-provider-manage": API_BASE + "/functions/user-provider-manage",
+        "process-engagement-order": API_BASE + "/functions/process-engagement-order",
       };
       const path = functionPaths[name];
       if (!path) return unavailable("This legacy function is unavailable.");
