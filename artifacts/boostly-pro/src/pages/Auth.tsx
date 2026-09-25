@@ -1,3 +1,4 @@
+import { API_BASE, apiUrl } from "@/lib/apiBase";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useSignIn, useSignUp, useUser } from "@clerk/react";
@@ -65,7 +66,7 @@ export default function Auth() {
     try {
       if (mode === "login") {
         const values = loginSchema.parse({ email, password });
-        const legacyResponse = await fetch("/api/auth/legacy-login", {
+        const legacyResponse = await fetch(apiUrl("/auth/legacy-login"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(values),

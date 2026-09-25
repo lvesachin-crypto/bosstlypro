@@ -1,5 +1,6 @@
+import { API_BASE, apiUrl } from "@/lib/apiBase";
 export const fetchApi = async (endpoint: string, options: RequestInit = {}) => {
-  const res = await fetch(`/api${endpoint}`, {
+  const res = await fetch(apiUrl(endpoint), {
     ...options,
     headers: {
       'Content-Type': 'application/json',
