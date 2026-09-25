@@ -31,7 +31,7 @@ type RatioKey = keyof typeof initialRatios;
 
 export default function CoreSettings() {
   const { profile, refreshProfile, signOut, isLoading } = useAuth();
-  const { user } = useUser();
+  const user: any = null;
   const navigate = useNavigate();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [fullName, setFullName] = useState("");
