@@ -10,7 +10,8 @@
     "server:install": "cd server && npm install",
     "server:build": "cd server && npm run build",
     "db:init": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f schema.sql",
-    "start": "cd server && npm start"
+    "start": "cd server && npm start",
+    "dev": "cd artifacts/boostly-pro && PORT=8080 ./node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0 --port 8080"
   },
   "private": true,
   "dependencies": {
