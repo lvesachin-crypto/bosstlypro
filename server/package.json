@@ -10,8 +10,6 @@
     "db:init": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f ../schema.sql"
   },
   "dependencies": {
-    "@clerk/express": "^2.1.66",
-    "@clerk/shared": "^4.31.0",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
