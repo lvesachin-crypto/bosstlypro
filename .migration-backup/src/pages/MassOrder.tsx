@@ -125,10 +125,10 @@ export default function MassOrder() {
   const priceMap: Record<string, number> = useMemo(() => {
     const m: Record<string, number> = {};
     (selectedBundle?.user_bundle_items || []).forEach((i: any) => {
-      if (i.engagement_type) m[i.engagement_type] = Number(i.price_per_k) || 0;
+      if (i.engagement_type) m[i.engagement_type] = rateForItem(i);
     });
     return m;
-  }, [selectedBundle]);
+  }, [selectedBundle, userServices]);
 
   function recomputeDefaults(base: number) {
     setBaseQty(base);
