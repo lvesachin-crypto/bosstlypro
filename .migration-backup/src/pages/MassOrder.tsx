@@ -200,7 +200,7 @@ export default function MassOrder() {
     items.forEach((i: any) => {
       if (i.engagement_type) serviceMap[i.engagement_type] = {
         service_id: i.service_id ?? null,
-        price: Number(i.price_per_k) || 0,
+        price: rateForItem(i),
       };
     });
 
