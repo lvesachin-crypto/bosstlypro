@@ -75,10 +75,11 @@ export default function MassOrder() {
     queryKey: ['mass-order-bundles', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_bundles')
-        .select('id, name, platform, user_bundle_items(id, engagement_type, price_per_k, user_service_id, user_bundle_item_providers(user_provider_account_id, provider_service_id, priority, enabled))')
+        .select('id, name, platform, user_bundle_items(id, engagement_type, quantity, user_service_id, user_bundle_item_providers(user_provider_account_id, provider_service_id, priority, enabled))')
         .order('created_at', { ascending: false });
+      if (error) throw error;
       return data || [];
     },
   });
@@ -87,13 +88,30 @@ export default function MassOrder() {
     queryKey: ['mass-order-user-services', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_services')
-        .select('user_provider_account_id, provider_service_id, min_quantity, is_active')
+        .select('id, user_provider_account_id, provider_service_id, rate, min_quantity, is_active')
         .eq('is_active', true);
+      if (error) throw error;
       return data || [];
     },
   });
+
+  // Bundle items don't store a price; rate comes from the linked provider service
+  // (falling back to the cheapest mapped provider service for that item).
+  const rateForItem = (item: any): number => {
+    const list = userServices as any[];
+    const direct = list.find((s) => s.id === item?.user_service_id);
+    if (direct && Number(direct.rate) > 0) return Number(direct.rate);
+    const mapped = (item?.user_bundle_item_providers || [])
+      .map((m: any) => list.find((s) =>
+        s.user_provider_account_id === m.user_provider_account_id
+        && String(s.provider_service_id) === String(m.provider_service_id)
+      ))
+      .filter((s: any) => s && Number(s.rate) > 0)
+      .map((s: any) => Number(s.rate));
+    return mapped.length ? Math.min(...mapped) : 0;
+  };
 
   const selectedBundle: any = useMemo(
     () => bundles.find((b: any) => b.id === bundleId),
@@ -107,10 +125,10 @@ export default function MassOrder() {
   const priceMap: Record<string, number> = useMemo(() => {
     const m: Record<string, number> = {};
     (selectedBundle?.user_bundle_items || []).forEach((i: any) => {
-      if (i.engagement_type) m[i.engagement_type] = Number(i.price_per_k) || 0;
+      if (i.engagement_type) m[i.engagement_type] = rateForItem(i);
     });
     return m;
-  }, [selectedBundle]);
+  }, [selectedBundle, userServices]);
 
   function recomputeDefaults(base: number) {
     setBaseQty(base);
@@ -182,7 +200,7 @@ export default function MassOrder() {
     items.forEach((i: any) => {
       if (i.engagement_type) serviceMap[i.engagement_type] = {
         service_id: i.service_id ?? null,
-        price: Number(i.price_per_k) || 0,
+        price: rateForItem(i),
       };
     });
 
