@@ -350,25 +350,29 @@ function ProvidersPanel({
         }
       }
 
-      const { data, error } = await supabase.functions.invoke('user-provider-manage', {
-        body: {
-          op: 'save_bundle_mappings',
-          item_id: itemId,
-          mappings: accounts.map((account) => {
-            const draft = drafts[account.id];
-            const serviceId = draft?.provider_service_id.trim() || '';
-            return {
-              account_id: account.id,
-              enabled: !!draft?.enabled,
-              service_id: serviceId || null,
-              priority: draft?.priority ?? 1,
-            };
-          }),
-        },
-      });
-      if (error || !data?.ok) {
-        toast.error(error?.message || data?.error || 'Failed to save bundle mappings');
-        return;
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) { toast.error('Not signed in'); return; }
+      // Park existing priorities to avoid unique-priority clashes while reordering
+      for (const m of mappings) {
+        const { error: e } = await supabase.from('user_bundle_item_providers')
+          .update({ priority: -(1000000 + Math.abs(m.priority || 0)) - Math.floor(Math.random() * 1000) })
+          .eq('id', m.id);
+        if (e) { toast.error(e.message); return; }
+      }
+      for (const account of accounts) {
+        const draft = drafts[account.id];
+        const serviceId = draft?.provider_service_id.trim() || null;
+        const payload = { enabled: !!draft?.enabled, provider_service_id: serviceId, priority: draft?.priority ?? 1 };
+        const existing = byAccount[account.id];
+        const { error: e } = existing
+          ? await supabase.from('user_bundle_item_providers').update(payload).eq('id', existing.id)
+          : await supabase.from('user_bundle_item_providers').insert({
+              ...payload, user_id: authUser.id, user_bundle_item_id: itemId, user_provider_account_id: account.id,
+            });
+        if (e) {
+          toast.error(e.message?.includes('SUBSCRIPTION') ? 'Active subscription required' : e.message);
+          return;
+        }
       }
       toast.success(`Saved ${changed.length} change${changed.length > 1 ? 's' : ''}`);
       await qc.invalidateQueries({ queryKey: ['ubi-providers', itemId] });
